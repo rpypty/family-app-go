@@ -2,7 +2,7 @@
 -- Plain INSERTs only. Running twice will fail on PK/unique constraints.
 
 INSERT INTO families (id, name, code, owner_id, created_at, updated_at) VALUES (
-  'f0000000-0000-0000-0000-000000000001', 'Family BTF6D5', 'BTF6D5', 'f0000000-0000-0000-0000-0000000000aa', '2026-02-05T00:00:00Z', '2026-02-05T00:00:00Z');
+  'f0000000-0000-0000-0000-000000000001', 'Family AAAAAA', 'AAAAAA', 'f0000000-0000-0000-0000-0000000000aa', '2026-02-05T00:00:00Z', '2026-02-05T00:00:00Z');
 
 INSERT INTO family_members (family_id, user_id, role, joined_at) VALUES
   ('f0000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000aa', 'owner', '2026-02-05T00:00:00Z'),

@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-family_app}
+    volumes:
+      - family_app_db:/var/lib/postgresql/data
+
+  app:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-family_app}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_TIMEZONE: ${DB_TIMEZONE:-UTC}
+      HTTP_PORT: ${HTTP_PORT:-8080}
+    depends_on:
+      - db
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    volumes:
+      - ./.env:/app/.env:ro
+
+volumes:
+  family_app_db:
