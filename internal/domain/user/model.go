@@ -9,3 +9,7 @@ type Profile struct {
 	CreatedAt time.Time  `gorm:"autoCreateTime"`
 	UpdatedAt time.Time  `gorm:"autoUpdateTime"`
 }
+
+func (Profile) TableName() string {
+	return "user_profiles"
+}
