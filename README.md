@@ -59,3 +59,31 @@ On startup, the service applies SQL migrations from `migrations/` in filename or
 - `api/` — API specs (OpenAPI)
 - `migrations/` — database migrations
 - `scripts/` — dev scripts
+
+
+## Supabase Auth (RU)
+
+Коротко: фронт получает токен от Supabase, бэк валидирует его через `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY`.
+
+**Env**
+- `SUPABASE_URL` — Project URL из Supabase.
+- `SUPABASE_PUBLISHABLE_KEY` — `anon/public` key из Supabase.
+- `SUPABASE_AUTH_TIMEOUT` — таймаут запроса к Supabase Auth (опционально).
+
+**Supabase Dashboard**
+1. `Project Settings -> API`: возьми `Project URL` и `anon/public` key.
+2. `Authentication -> URL Configuration`: задай `Site URL` (prod) и `Additional Redirect URLs` (dev/prod коллбеки), например `http://localhost:5173/auth/callback` и `https://app.example.com/auth/callback`.
+3. `Authentication -> Providers -> Google`: включи провайдера и вставь `Client ID` и `Client Secret` из Google Cloud Console.
+
+**Google Cloud Console**
+1. Создай проект и экран согласия OAuth (OAuth consent screen).
+2. Создай `OAuth Client ID` типа **Web application**.
+3. `Authorized JavaScript origins`: добавь фронтовые origins, например `http://localhost:5173` и `https://app.example.com`.
+4. `Authorized redirect URIs`: добавь **только** callback Supabase вида `https://<project-ref>.supabase.co/auth/v1/callback`.
+5. Скопируй `Client ID`/`Client Secret` в Supabase Dashboard.
+
+**Redirect URL / Origin URL**
+- Redirect URL — это путь на фронте, куда Supabase возвращает пользователя после логина. Он должен быть в `Additional Redirect URLs`.
+- Origin URL — домен фронта; добавь его в `Authentication -> URL Configuration -> Site URL` (prod).
+- Origin URL нужно добавить в `Authorized JavaScript origins` в Google Cloud Console.
+- Origin URL нужно добавить в CORS-ориджины бэка (см. `internal/transport/httpserver/routes.go`).
