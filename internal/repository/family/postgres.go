@@ -84,6 +84,16 @@ func (r *PostgresRepository) UpdateFamilyName(ctx context.Context, familyID, nam
 	return r.db.WithContext(ctx).Model(&familydomain.Family{}).Where("id = ?", familyID).Update("name", name).Error
 }
 
+func (r *PostgresRepository) UpdateFamilyOwner(ctx context.Context, familyID, ownerID string) error {
+	return r.db.WithContext(ctx).Model(&familydomain.Family{}).Where("id = ?", familyID).Update("owner_id", ownerID).Error
+}
+
+func (r *PostgresRepository) UpdateMemberRole(ctx context.Context, familyID, userID, role string) error {
+	return r.db.WithContext(ctx).Model(&familydomain.FamilyMember{}).
+		Where("family_id = ? AND user_id = ?", familyID, userID).
+		Update("role", role).Error
+}
+
 func (r *PostgresRepository) DeleteFamily(ctx context.Context, familyID string) error {
 	return r.db.WithContext(ctx).Delete(&familydomain.Family{}, "id = ?", familyID).Error
 }

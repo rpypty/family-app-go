@@ -2,9 +2,7 @@ package handler
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -298,32 +296,4 @@ func toExpenseResponse(expense expensesdomain.ExpenseWithTags) expenseResponse {
 		CreatedAt: expense.CreatedAt,
 		UpdatedAt: expense.UpdatedAt,
 	}
-}
-
-func parseDateRequired(value string) (time.Time, error) {
-	return time.Parse("2006-01-02", strings.TrimSpace(value))
-}
-
-func parseDateParam(value string) (*time.Time, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil, nil
-	}
-	parsed, err := time.Parse("2006-01-02", value)
-	if err != nil {
-		return nil, err
-	}
-	return &parsed, nil
-}
-
-func parseIntParam(value string, fallback int) (int, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fallback, nil
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed < 0 {
-		return 0, fmt.Errorf("invalid int")
-	}
-	return parsed, nil
 }

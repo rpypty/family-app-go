@@ -133,13 +133,29 @@ func (s *Service) LeaveFamily(ctx context.Context, userID string) error {
 				return err
 			}
 			if count > 1 {
-				return ErrOwnerMustTransfer
+				members, err := tx.ListMembers(ctx, member.FamilyID)
+				if err != nil {
+					return err
+				}
+				var newOwner *FamilyMember
+				for i := range members {
+					if members[i].UserID != userID {
+						newOwner = &members[i]
+						break
+					}
+				}
+				if newOwner == nil {
+					return fmt.Errorf("failed to find new owner")
+				}
+				if err := tx.UpdateFamilyOwner(ctx, member.FamilyID, newOwner.UserID); err != nil {
+					return err
+				}
+				if err := tx.UpdateMemberRole(ctx, member.FamilyID, newOwner.UserID, RoleOwner); err != nil {
+					return err
+				}
+				return tx.DeleteMember(ctx, member.FamilyID, userID)
 			}
-
-			if err := tx.DeleteMembersByFamily(ctx, member.FamilyID); err != nil {
-				return err
-			}
-			return tx.DeleteFamily(ctx, member.FamilyID)
+			return tx.DeleteMember(ctx, member.FamilyID, userID)
 		}
 
 		return tx.DeleteMember(ctx, member.FamilyID, userID)

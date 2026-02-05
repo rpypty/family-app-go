@@ -1,18 +1,21 @@
 package handler
 
 import (
+	analyticsdomain "family-app-go/internal/domain/analytics"
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
 )
 
 type Handlers struct {
-	Families *familydomain.Service
-	Expenses *expensesdomain.Service
+	Analytics *analyticsdomain.Service
+	Families  *familydomain.Service
+	Expenses  *expensesdomain.Service
 }
 
-func New(families *familydomain.Service, expenses *expensesdomain.Service) *Handlers {
+func New(analytics *analyticsdomain.Service, families *familydomain.Service, expenses *expensesdomain.Service) *Handlers {
 	return &Handlers{
-		Families: families,
-		Expenses: expenses,
+		Analytics: analytics,
+		Families:  families,
+		Expenses:  expenses,
 	}
 }

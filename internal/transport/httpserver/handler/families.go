@@ -119,8 +119,6 @@ func (h *Handlers) LeaveFamily(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, familydomain.ErrFamilyNotFound):
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
-		case errors.Is(err, familydomain.ErrOwnerMustTransfer):
-			writeError(w, http.StatusConflict, "owner_must_transfer", "owner must transfer before leaving")
 		default:
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}

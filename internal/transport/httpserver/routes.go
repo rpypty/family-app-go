@@ -28,6 +28,12 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers) http.Handler {
 
 		r.Get("/auth/me", handlers.AuthMe)
 
+		r.Get("/analytics/summary", handlers.AnalyticsSummary)
+		r.Get("/analytics/timeseries", handlers.AnalyticsTimeseries)
+		r.Get("/analytics/by-tag", handlers.AnalyticsByTag)
+		r.Get("/reports/monthly", handlers.ReportsMonthly)
+		r.Get("/reports/compare", handlers.ReportsCompare)
+
 		r.Get("/families/me", handlers.GetFamilyMe)
 		r.Post("/families", handlers.CreateFamily)
 		r.Post("/families/join", handlers.JoinFamily)

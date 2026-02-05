@@ -90,6 +90,24 @@ func (r *fakeFamilyRepo) UpdateFamilyName(ctx context.Context, familyID, name st
 	return nil
 }
 
+func (r *fakeFamilyRepo) UpdateFamilyOwner(ctx context.Context, familyID, ownerID string) error {
+	family, ok := r.families[familyID]
+	if !ok {
+		return ErrFamilyNotFound
+	}
+	family.OwnerID = ownerID
+	return nil
+}
+
+func (r *fakeFamilyRepo) UpdateMemberRole(ctx context.Context, familyID, userID, role string) error {
+	member, ok := r.members[userID]
+	if !ok || member.FamilyID != familyID {
+		return ErrFamilyNotFound
+	}
+	member.Role = role
+	return nil
+}
+
 func (r *fakeFamilyRepo) DeleteFamily(ctx context.Context, familyID string) error {
 	family, ok := r.families[familyID]
 	if ok {
@@ -206,19 +224,28 @@ func TestJoinFamilyCodeNotFound(t *testing.T) {
 	}
 }
 
-func TestLeaveFamilyOwnerMustTransfer(t *testing.T) {
+func TestLeaveFamilyOwnerTransfers(t *testing.T) {
 	repo := newFakeFamilyRepo()
 	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "owner"}
 	repo.members["owner"] = &FamilyMember{FamilyID: "fam-1", UserID: "owner", Role: RoleOwner}
 	repo.members["user-2"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-2", Role: RoleMember}
 
 	svc := NewService(repo)
-	err := svc.LeaveFamily(context.Background(), "owner")
-	if !errors.Is(err, ErrOwnerMustTransfer) {
-		t.Fatalf("expected ErrOwnerMustTransfer, got %v", err)
+	if err := svc.LeaveFamily(context.Background(), "owner"); err != nil {
+		t.Fatalf("expected no error, got %v", err)
 	}
 	if repo.families["fam-1"] == nil {
 		t.Fatalf("family should not be deleted")
+	}
+	if repo.families["fam-1"].OwnerID != "user-2" {
+		t.Fatalf("expected owner reassigned to user-2, got %s", repo.families["fam-1"].OwnerID)
+	}
+	member := repo.members["user-2"]
+	if member == nil || member.Role != RoleOwner {
+		t.Fatalf("expected user-2 to be owner, got %+v", member)
+	}
+	if _, ok := repo.members["owner"]; ok {
+		t.Fatalf("expected owner membership deleted")
 	}
 }
 
@@ -231,11 +258,11 @@ func TestLeaveFamilyOwnerSolo(t *testing.T) {
 	if err := svc.LeaveFamily(context.Background(), "owner"); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if _, ok := repo.families["fam-1"]; ok {
-		t.Fatalf("expected family deleted")
+	if _, ok := repo.families["fam-1"]; !ok {
+		t.Fatalf("expected family to remain")
 	}
 	if _, ok := repo.members["owner"]; ok {
-		t.Fatalf("expected member deleted")
+		t.Fatalf("expected owner membership deleted")
 	}
 }
 

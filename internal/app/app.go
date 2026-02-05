@@ -6,8 +6,10 @@ import (
 
 	"family-app-go/internal/config"
 	"family-app-go/internal/db"
+	analyticsdomain "family-app-go/internal/domain/analytics"
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
+	analyticsrepo "family-app-go/internal/repository/analytics"
 	expensesrepo "family-app-go/internal/repository/expenses"
 	familyrepo "family-app-go/internal/repository/family"
 	"family-app-go/internal/transport/httpserver"
@@ -41,7 +43,9 @@ func New() (*App, error) {
 	familyService := familydomain.NewService(familyRepo)
 	expensesRepo := expensesrepo.NewPostgres(dbConn)
 	expensesService := expensesdomain.NewService(expensesRepo)
-	handlers := handler.New(familyService, expensesService)
+	analyticsRepo := analyticsrepo.NewPostgres(dbConn)
+	analyticsService := analyticsdomain.NewService(analyticsRepo)
+	handlers := handler.New(analyticsService, familyService, expensesService)
 
 	log.Printf("app: initializing router")
 	router := httpserver.NewRouter(cfg, handlers)
