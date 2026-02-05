@@ -1,11 +1,18 @@
 package handler
 
-import "gorm.io/gorm"
+import (
+	expensesdomain "family-app-go/internal/domain/expenses"
+	familydomain "family-app-go/internal/domain/family"
+)
 
 type Handlers struct {
-	DB *gorm.DB
+	Families *familydomain.Service
+	Expenses *expensesdomain.Service
 }
 
-func New(db *gorm.DB) *Handlers {
-	return &Handlers{DB: db}
+func New(families *familydomain.Service, expenses *expensesdomain.Service) *Handlers {
+	return &Handlers{
+		Families: families,
+		Expenses: expenses,
+	}
 }

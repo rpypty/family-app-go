@@ -18,15 +18,27 @@ type SupabaseAuth struct {
 
 type contextKey int
 
-const userIDKey contextKey = iota
+const (
+	userIDKey contextKey = iota
+	userKey
+)
 
 type userResponse struct {
-	ID   string `json:"id"`
-	Sub  string `json:"sub"`
-	User struct {
+	ID           string                 `json:"id"`
+	Email        string                 `json:"email"`
+	Sub          string                 `json:"sub"`
+	UserMetadata map[string]interface{} `json:"user_metadata"`
+	User         struct {
 		ID  string `json:"id"`
 		Sub string `json:"sub"`
 	} `json:"user"`
+}
+
+type User struct {
+	ID        string
+	Email     string
+	Name      string
+	AvatarURL string
 }
 
 func NewSupabaseAuth(cfg config.SupabaseConfig) *SupabaseAuth {
@@ -48,7 +60,7 @@ func NewSupabaseAuth(cfg config.SupabaseConfig) *SupabaseAuth {
 func (a *SupabaseAuth) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if a.baseURL == "" || a.apiKey == "" {
-			http.Error(w, "auth not configured", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "auth_not_configured", "auth not configured")
 			return
 		}
 
@@ -90,7 +102,14 @@ func (a *SupabaseAuth) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := WithUserID(r.Context(), userID)
+		user := User{
+			ID:        userID,
+			Email:     payload.Email,
+			Name:      firstNonEmpty(stringFromMap(payload.UserMetadata, "name"), stringFromMap(payload.UserMetadata, "full_name")),
+			AvatarURL: stringFromMap(payload.UserMetadata, "avatar_url"),
+		}
+
+		ctx := WithUser(r.Context(), user)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -107,13 +126,25 @@ func bearerToken(value string) (string, bool) {
 }
 
 func unauthorized(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusUnauthorized)
-	_, _ = w.Write([]byte("unauthorized"))
+	writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
+}
+
+func WithUser(ctx context.Context, user User) context.Context {
+	ctx = context.WithValue(ctx, userKey, user)
+	return context.WithValue(ctx, userIDKey, user.ID)
 }
 
 func WithUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, userIDKey, userID)
+}
+
+func UserFromContext(ctx context.Context) (User, bool) {
+	value := ctx.Value(userKey)
+	user, ok := value.(User)
+	if !ok || user.ID == "" {
+		return User{}, false
+	}
+	return user, true
 }
 
 func UserIDFromContext(ctx context.Context) (string, bool) {
@@ -132,4 +163,30 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func writeError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"error": map[string]string{
+			"code":    code,
+			"message": message,
+		},
+	})
+}
+
+func stringFromMap(values map[string]interface{}, key string) string {
+	if values == nil {
+		return ""
+	}
+	value, ok := values[key]
+	if !ok {
+		return ""
+	}
+	parsed, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return parsed
 }

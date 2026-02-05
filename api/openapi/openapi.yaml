@@ -1,0 +1,487 @@
+openapi: 3.0.3
+info:
+  title: Family App API
+  version: 0.1.0
+  description: API for family-app backend.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Healthcheck
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/me:
+    get:
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthMeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /families/me:
+    get:
+      summary: Get current family
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Family'
+        '404':
+          $ref: '#/components/responses/FamilyNotFound'
+    patch:
+      summary: Update family name
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFamilyRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Family'
+  /families:
+    post:
+      summary: Create family
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFamilyRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Family'
+        '409':
+          $ref: '#/components/responses/AlreadyInFamily'
+  /families/join:
+    post:
+      summary: Join family by code
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinFamilyRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Family'
+        '404':
+          $ref: '#/components/responses/FamilyCodeNotFound'
+        '409':
+          $ref: '#/components/responses/AlreadyInFamily'
+  /families/leave:
+    post:
+      summary: Leave family
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/FamilyNotFound'
+        '409':
+          $ref: '#/components/responses/OwnerMustTransfer'
+  /families/me/members:
+    get:
+      summary: List family members
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FamilyMember'
+  /expenses:
+    get:
+      summary: List expenses
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: tag_id
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpenseList'
+    post:
+      summary: Create expense
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExpenseRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+  /expenses/{id}:
+    put:
+      summary: Update expense
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateExpenseRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+    delete:
+      summary: Delete expense
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+  /tags:
+    get:
+      summary: List tags
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tag'
+    post:
+      summary: Create tag
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTagRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+  /tags/{id}:
+    delete:
+      summary: Delete tag
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: invalid_token
+              message: Invalid token
+    FamilyNotFound:
+      description: Family not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: family_not_found
+              message: Family not found
+    FamilyCodeNotFound:
+      description: Family code not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: family_code_not_found
+              message: Family code not found
+    AlreadyInFamily:
+      description: Already in family
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: already_in_family
+              message: Already in family
+    OwnerMustTransfer:
+      description: Owner must transfer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: owner_must_transfer
+              message: Owner must transfer before leaving
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+    AuthMeResponse:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
+    Family:
+      type: object
+      required: [id, name, code, owner_id, created_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        owner_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    FamilyMember:
+      type: object
+      required: [user_id, role, joined_at]
+      properties:
+        user_id:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+        joined_at:
+          type: string
+          format: date-time
+    Expense:
+      type: object
+      required: [id, family_id, user_id, date, amount, currency, title, tag_ids, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        family_id:
+          type: string
+        user_id:
+          type: string
+        date:
+          type: string
+          format: date
+        amount:
+          type: number
+        currency:
+          type: string
+        title:
+          type: string
+        tag_ids:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ExpenseList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Expense'
+        total:
+          type: integer
+    Tag:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CreateFamilyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    JoinFamilyRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+    UpdateFamilyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    CreateExpenseRequest:
+      type: object
+      required: [date, amount, currency, title]
+      properties:
+        date:
+          type: string
+          format: date
+        amount:
+          type: number
+        currency:
+          type: string
+        title:
+          type: string
+        tag_ids:
+          type: array
+          items:
+            type: string
+    UpdateExpenseRequest:
+      type: object
+      required: [date, amount, currency, title]
+      properties:
+        date:
+          type: string
+          format: date
+        amount:
+          type: number
+        currency:
+          type: string
+        title:
+          type: string
+        tag_ids:
+          type: array
+          items:
+            type: string
+    CreateTagRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string

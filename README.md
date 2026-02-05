@@ -8,6 +8,24 @@ Go backend for family-app.
 HTTP_PORT=8080 go run ./cmd/family-app
 ```
 
+## Tests
+
+Unit tests:
+
+```bash
+make test
+```
+
+E2E tests (require Postgres DSN):
+
+```bash
+E2E_DB_DSN="postgres://user:pass@localhost:5432/family_app?sslmode=disable" make e2e
+```
+
+## Migrations
+
+On startup, the service applies SQL migrations from `migrations/` in filename order and records them in `schema_migrations`.
+
 ## Env
 
 - `HTTP_PORT` (default `8080`)
@@ -33,6 +51,8 @@ HTTP_PORT=8080 go run ./cmd/family-app
 - `internal/app` — application wiring
 - `internal/config` — env-based configuration
 - `internal/db` — database connections
+- `internal/domain` — domain/business logic
+- `internal/repository` — data access layer
 - `internal/transport/httpserver` — HTTP server (chi) and routes
 - `internal/transport/httpserver/handler` — HTTP handlers
 - `pkg/` — reusable libraries (public)
