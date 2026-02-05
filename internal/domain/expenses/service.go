@@ -68,6 +68,9 @@ func (s *Service) CreateExpense(ctx context.Context, input CreateExpenseInput) (
 	}
 
 	tagIDs := normalizeTagIDs(input.TagIDs)
+	if err := validateTagIDs(tagIDs); err != nil {
+		return nil, err
+	}
 
 	err = s.repo.Transaction(ctx, func(tx Repository) error {
 		if len(tagIDs) > 0 {
@@ -99,6 +102,9 @@ func (s *Service) UpdateExpense(ctx context.Context, input UpdateExpenseInput) (
 	}
 
 	tagIDs := normalizeTagIDs(input.TagIDs)
+	if err := validateTagIDs(tagIDs); err != nil {
+		return nil, err
+	}
 
 	var updated Expense
 	err := s.repo.Transaction(ctx, func(tx Repository) error {
@@ -221,6 +227,39 @@ func normalizeTagIDs(tagIDs []string) []string {
 	}
 
 	return result
+}
+
+func validateTagIDs(tagIDs []string) error {
+	for _, tagID := range tagIDs {
+		if !isUUID(tagID) {
+			return ErrTagNotFound
+		}
+	}
+	return nil
+}
+
+func isUUID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		ch := value[i]
+		switch i {
+		case 8, 13, 18, 23:
+			if ch != '-' {
+				return false
+			}
+			continue
+		}
+		if !isHex(ch) {
+			return false
+		}
+	}
+	return true
+}
+
+func isHex(ch byte) bool {
+	return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
 }
 
 func newUUID() (string, error) {

@@ -327,6 +327,26 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/FamilyMember'
+  /families/me/members/{user_id}:
+    delete:
+      summary: Remove family member
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '403':
+          $ref: '#/components/responses/NotOwner'
+        '404':
+          $ref: '#/components/responses/MemberNotFound'
+        '409':
+          $ref: '#/components/responses/CannotRemoveOwner'
   /expenses:
     get:
       summary: List expenses
@@ -510,6 +530,36 @@ components:
             error:
               code: already_in_family
               message: Already in family
+    NotOwner:
+      description: Not owner
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: not_owner
+              message: Only owner can remove members
+    MemberNotFound:
+      description: Member not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: member_not_found
+              message: Member not found
+    CannotRemoveOwner:
+      description: Cannot remove owner
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: cannot_remove_owner
+              message: Cannot remove owner
   schemas:
     ErrorResponse:
       type: object
@@ -565,6 +615,12 @@ components:
         joined_at:
           type: string
           format: date-time
+        email:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
     Expense:
       type: object
       required: [id, family_id, user_id, date, amount, currency, title, tag_ids, created_at, updated_at]

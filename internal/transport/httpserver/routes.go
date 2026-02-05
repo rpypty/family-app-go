@@ -11,7 +11,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(cfg config.Config, handlers *handler.Handlers) http.Handler {
+func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.ProfileSaver) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
@@ -22,7 +22,7 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers) http.Handler {
 
 	r.Get("/health", handlers.Health)
 
-	auth := authmw.NewSupabaseAuth(cfg.Supabase)
+	auth := authmw.NewSupabaseAuth(cfg.Supabase, profiles)
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware)
 
@@ -40,6 +40,7 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers) http.Handler {
 		r.Post("/families/leave", handlers.LeaveFamily)
 		r.Patch("/families/me", handlers.UpdateFamily)
 		r.Get("/families/me/members", handlers.ListFamilyMembers)
+		r.Delete("/families/me/members/{user_id}", handlers.RemoveFamilyMember)
 
 		r.Get("/expenses", handlers.ListExpenses)
 		r.Post("/expenses", handlers.CreateExpense)

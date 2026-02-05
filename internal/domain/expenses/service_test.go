@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const tagID1 = "11111111-1111-1111-1111-111111111111"
+
 type fakeExpensesRepo struct {
 	expenses    map[string]*Expense
 	tags        map[string]*Tag
@@ -152,7 +154,7 @@ func (r *fakeExpensesRepo) DeleteTag(ctx context.Context, familyID, tagID string
 
 func TestCreateExpenseSuccess(t *testing.T) {
 	repo := newFakeExpensesRepo()
-	repo.tags["tag-1"] = &Tag{ID: "tag-1", FamilyID: "fam-1", Name: "Food"}
+	repo.tags[tagID1] = &Tag{ID: tagID1, FamilyID: "fam-1", Name: "Food"}
 	svc := NewService(repo)
 
 	input := CreateExpenseInput{
@@ -162,7 +164,7 @@ func TestCreateExpenseSuccess(t *testing.T) {
 		Amount:   12.5,
 		Currency: "byn",
 		Title:    "Coffee",
-		TagIDs:   []string{"tag-1"},
+		TagIDs:   []string{tagID1},
 	}
 
 	result, err := svc.CreateExpense(context.Background(), input)
@@ -172,7 +174,7 @@ func TestCreateExpenseSuccess(t *testing.T) {
 	if result.Currency != "BYN" {
 		t.Fatalf("expected currency normalized, got %q", result.Currency)
 	}
-	if len(result.TagIDs) != 1 || result.TagIDs[0] != "tag-1" {
+	if len(result.TagIDs) != 1 || result.TagIDs[0] != tagID1 {
 		t.Fatalf("expected tag ids, got %+v", result.TagIDs)
 	}
 	if repo.expenses[result.ID] == nil {
@@ -191,7 +193,7 @@ func TestCreateExpenseTagNotFound(t *testing.T) {
 		Amount:   12.5,
 		Currency: "BYN",
 		Title:    "Coffee",
-		TagIDs:   []string{"tag-1"},
+		TagIDs:   []string{tagID1},
 	}
 
 	_, err := svc.CreateExpense(context.Background(), input)
@@ -222,7 +224,7 @@ func TestUpdateExpenseNotFound(t *testing.T) {
 
 func TestUpdateExpenseSuccess(t *testing.T) {
 	repo := newFakeExpensesRepo()
-	repo.tags["tag-1"] = &Tag{ID: "tag-1", FamilyID: "fam-1", Name: "Food"}
+	repo.tags[tagID1] = &Tag{ID: tagID1, FamilyID: "fam-1", Name: "Food"}
 	repo.expenses["exp-1"] = &Expense{
 		ID:       "exp-1",
 		FamilyID: "fam-1",
@@ -241,7 +243,7 @@ func TestUpdateExpenseSuccess(t *testing.T) {
 		Amount:   10,
 		Currency: "usd",
 		Title:    "New",
-		TagIDs:   []string{"tag-1"},
+		TagIDs:   []string{tagID1},
 	}
 
 	result, err := svc.UpdateExpense(context.Background(), input)
@@ -260,7 +262,7 @@ func TestListExpensesMergesTags(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	repo.expenses["exp-1"] = &Expense{ID: "exp-1", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC)}
 	repo.expenses["exp-2"] = &Expense{ID: "exp-2", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC)}
-	repo.expenseTags["exp-1"] = []string{"tag-1"}
+	repo.expenseTags["exp-1"] = []string{tagID1}
 
 	svc := NewService(repo)
 	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{})
@@ -277,7 +279,7 @@ func TestListExpensesMergesTags(t *testing.T) {
 	for _, item := range items {
 		if item.ID == "exp-1" {
 			found = true
-			if len(item.TagIDs) != 1 || item.TagIDs[0] != "tag-1" {
+			if len(item.TagIDs) != 1 || item.TagIDs[0] != tagID1 {
 				t.Fatalf("expected tags on exp-1, got %v", item.TagIDs)
 			}
 		}
@@ -318,7 +320,7 @@ func TestCreateAndDeleteTag(t *testing.T) {
 func TestDeleteTagNotFound(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
-	if err := svc.DeleteTag(context.Background(), "fam-1", "tag-1"); !errors.Is(err, ErrTagNotFound) {
+	if err := svc.DeleteTag(context.Background(), "fam-1", tagID1); !errors.Is(err, ErrTagNotFound) {
 		t.Fatalf("expected ErrTagNotFound, got %v", err)
 	}
 }

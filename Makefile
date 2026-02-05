@@ -15,3 +15,6 @@ e2e:
 		exit 1; \
 	fi
 	go test -tags e2e ./e2e/...
+
+test-e2e:
+	E2E_DB_DSN="postgres://admin:admin@localhost:55433/family_app?sslmode=disable" go test -tags e2e ./e2e/...

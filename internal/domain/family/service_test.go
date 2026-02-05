@@ -57,12 +57,33 @@ func (r *fakeFamilyRepo) GetMemberByUser(ctx context.Context, userID string) (*F
 	return member, nil
 }
 
+func (r *fakeFamilyRepo) GetMember(ctx context.Context, familyID, userID string) (*FamilyMember, error) {
+	member, ok := r.members[userID]
+	if !ok || member.FamilyID != familyID {
+		return nil, ErrMemberNotFound
+	}
+	return member, nil
+}
+
 func (r *fakeFamilyRepo) ListMembers(ctx context.Context, familyID string) ([]FamilyMember, error) {
 	result := make([]FamilyMember, 0)
 	for _, member := range r.members {
 		if member.FamilyID == familyID {
 			result = append(result, *member)
 		}
+	}
+	return result, nil
+}
+
+func (r *fakeFamilyRepo) ListMembersWithProfiles(ctx context.Context, familyID string) ([]FamilyMemberProfile, error) {
+	members, _ := r.ListMembers(ctx, familyID)
+	result := make([]FamilyMemberProfile, 0, len(members))
+	for _, member := range members {
+		result = append(result, FamilyMemberProfile{
+			UserID:   member.UserID,
+			Role:     member.Role,
+			JoinedAt: member.JoinedAt,
+		})
 	}
 	return result, nil
 }
@@ -294,5 +315,47 @@ func TestListMembers(t *testing.T) {
 	}
 	if len(members) != 2 {
 		t.Fatalf("expected 2 members, got %d", len(members))
+	}
+}
+
+func TestRemoveMemberNotOwner(t *testing.T) {
+	repo := newFakeFamilyRepo()
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "owner"}
+	repo.members["owner"] = &FamilyMember{FamilyID: "fam-1", UserID: "owner", Role: RoleOwner}
+	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleMember}
+	repo.members["user-2"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-2", Role: RoleMember}
+
+	svc := NewService(repo)
+	err := svc.RemoveMember(context.Background(), "user-1", "user-2")
+	if !errors.Is(err, ErrNotOwner) {
+		t.Fatalf("expected ErrNotOwner, got %v", err)
+	}
+}
+
+func TestRemoveMemberCannotRemoveOwner(t *testing.T) {
+	repo := newFakeFamilyRepo()
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "owner"}
+	repo.members["owner"] = &FamilyMember{FamilyID: "fam-1", UserID: "owner", Role: RoleOwner}
+	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleMember}
+
+	svc := NewService(repo)
+	err := svc.RemoveMember(context.Background(), "owner", "owner")
+	if !errors.Is(err, ErrCannotRemoveOwner) {
+		t.Fatalf("expected ErrCannotRemoveOwner, got %v", err)
+	}
+}
+
+func TestRemoveMemberSuccess(t *testing.T) {
+	repo := newFakeFamilyRepo()
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "owner"}
+	repo.members["owner"] = &FamilyMember{FamilyID: "fam-1", UserID: "owner", Role: RoleOwner}
+	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleMember}
+
+	svc := NewService(repo)
+	if err := svc.RemoveMember(context.Background(), "owner", "user-1"); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if _, ok := repo.members["user-1"]; ok {
+		t.Fatalf("expected member removed")
 	}
 }

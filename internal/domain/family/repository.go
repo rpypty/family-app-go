@@ -7,7 +7,9 @@ type Repository interface {
 	GetFamilyByUser(ctx context.Context, userID string) (*Family, error)
 	GetFamilyByCode(ctx context.Context, code string) (*Family, error)
 	GetMemberByUser(ctx context.Context, userID string) (*FamilyMember, error)
+	GetMember(ctx context.Context, familyID, userID string) (*FamilyMember, error)
 	ListMembers(ctx context.Context, familyID string) ([]FamilyMember, error)
+	ListMembersWithProfiles(ctx context.Context, familyID string) ([]FamilyMemberProfile, error)
 	CreateFamily(ctx context.Context, family *Family) error
 	AddMember(ctx context.Context, member *FamilyMember) error
 	UpdateFamilyName(ctx context.Context, familyID, name string) error

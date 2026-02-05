@@ -24,3 +24,11 @@ type FamilyMember struct {
 
 	Family Family `gorm:"foreignKey:FamilyID;references:ID;constraint:OnDelete:CASCADE"`
 }
+
+type FamilyMemberProfile struct {
+	UserID    string
+	Role      string
+	JoinedAt  time.Time
+	Email     *string
+	AvatarURL *string
+}

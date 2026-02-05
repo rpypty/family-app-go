@@ -3,6 +3,7 @@ package family
 import (
 	"context"
 	"errors"
+	"time"
 
 	familydomain "family-app-go/internal/domain/family"
 	"gorm.io/gorm"
@@ -61,6 +62,17 @@ func (r *PostgresRepository) GetMemberByUser(ctx context.Context, userID string)
 	return &member, nil
 }
 
+func (r *PostgresRepository) GetMember(ctx context.Context, familyID, userID string) (*familydomain.FamilyMember, error) {
+	var member familydomain.FamilyMember
+	if err := r.db.WithContext(ctx).Where("family_id = ? AND user_id = ?", familyID, userID).First(&member).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, familydomain.ErrMemberNotFound
+		}
+		return nil, err
+	}
+	return &member, nil
+}
+
 func (r *PostgresRepository) ListMembers(ctx context.Context, familyID string) ([]familydomain.FamilyMember, error) {
 	var members []familydomain.FamilyMember
 	if err := r.db.WithContext(ctx).
@@ -68,6 +80,39 @@ func (r *PostgresRepository) ListMembers(ctx context.Context, familyID string) (
 		Order("joined_at asc").
 		Find(&members).Error; err != nil {
 		return nil, err
+	}
+	return members, nil
+}
+
+func (r *PostgresRepository) ListMembersWithProfiles(ctx context.Context, familyID string) ([]familydomain.FamilyMemberProfile, error) {
+	type memberRow struct {
+		UserID    string     `gorm:"column:user_id"`
+		Role      string     `gorm:"column:role"`
+		JoinedAt  time.Time  `gorm:"column:joined_at"`
+		Email     *string    `gorm:"column:email"`
+		AvatarURL *string    `gorm:"column:avatar_url"`
+	}
+
+	var rows []memberRow
+	if err := r.db.WithContext(ctx).
+		Table("family_members").
+		Select("family_members.user_id, family_members.role, family_members.joined_at, user_profiles.email, user_profiles.avatar_url").
+		Joins("left join user_profiles on user_profiles.user_id = family_members.user_id").
+		Where("family_members.family_id = ?", familyID).
+		Order("family_members.joined_at asc").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	members := make([]familydomain.FamilyMemberProfile, 0, len(rows))
+	for _, row := range rows {
+		members = append(members, familydomain.FamilyMemberProfile{
+			UserID:    row.UserID,
+			Role:      row.Role,
+			JoinedAt:  row.JoinedAt,
+			Email:     row.Email,
+			AvatarURL: row.AvatarURL,
+		})
 	}
 	return members, nil
 }

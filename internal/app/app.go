@@ -9,9 +9,11 @@ import (
 	analyticsdomain "family-app-go/internal/domain/analytics"
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
+	userdomain "family-app-go/internal/domain/user"
 	analyticsrepo "family-app-go/internal/repository/analytics"
 	expensesrepo "family-app-go/internal/repository/expenses"
 	familyrepo "family-app-go/internal/repository/family"
+	userrepo "family-app-go/internal/repository/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
 	"gorm.io/gorm"
@@ -45,10 +47,12 @@ func New() (*App, error) {
 	expensesService := expensesdomain.NewService(expensesRepo)
 	analyticsRepo := analyticsrepo.NewPostgres(dbConn)
 	analyticsService := analyticsdomain.NewService(analyticsRepo)
+	userRepo := userrepo.NewPostgres(dbConn)
+	userService := userdomain.NewService(userRepo)
 	handlers := handler.New(analyticsService, familyService, expensesService)
 
 	log.Printf("app: initializing router")
-	router := httpserver.NewRouter(cfg, handlers)
+	router := httpserver.NewRouter(cfg, handlers, userService)
 
 	log.Printf("app: initializing http server")
 	srv := httpserver.New(cfg, router)

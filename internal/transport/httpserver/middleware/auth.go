@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ type SupabaseAuth struct {
 	baseURL string
 	apiKey  string
 	client  *http.Client
+	profiles ProfileSaver
 }
 
 type contextKey int
@@ -41,7 +43,11 @@ type User struct {
 	AvatarURL string
 }
 
-func NewSupabaseAuth(cfg config.SupabaseConfig) *SupabaseAuth {
+type ProfileSaver interface {
+	UpsertProfile(ctx context.Context, userID, email, avatarURL string) error
+}
+
+func NewSupabaseAuth(cfg config.SupabaseConfig, profiles ProfileSaver) *SupabaseAuth {
 	baseURL := strings.TrimRight(cfg.URL, "/")
 	timeout := cfg.AuthTimeout
 	if timeout == 0 {
@@ -54,6 +60,7 @@ func NewSupabaseAuth(cfg config.SupabaseConfig) *SupabaseAuth {
 		client: &http.Client{
 			Timeout: timeout,
 		},
+		profiles: profiles,
 	}
 }
 
@@ -107,6 +114,12 @@ func (a *SupabaseAuth) Middleware(next http.Handler) http.Handler {
 			Email:     payload.Email,
 			Name:      firstNonEmpty(stringFromMap(payload.UserMetadata, "name"), stringFromMap(payload.UserMetadata, "full_name")),
 			AvatarURL: stringFromMap(payload.UserMetadata, "avatar_url"),
+		}
+
+		if a.profiles != nil {
+			if err := a.profiles.UpsertProfile(r.Context(), user.ID, user.Email, user.AvatarURL); err != nil {
+				log.Printf("auth: upsert profile failed: %v", err)
+			}
 		}
 
 		ctx := WithUser(r.Context(), user)

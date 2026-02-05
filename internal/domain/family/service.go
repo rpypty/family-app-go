@@ -190,6 +190,41 @@ func (s *Service) ListMembers(ctx context.Context, userID string) ([]FamilyMembe
 	return s.repo.ListMembers(ctx, family.ID)
 }
 
+func (s *Service) ListMembersWithProfiles(ctx context.Context, userID string) ([]FamilyMemberProfile, error) {
+	family, err := s.repo.GetFamilyByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.repo.ListMembersWithProfiles(ctx, family.ID)
+}
+
+func (s *Service) RemoveMember(ctx context.Context, actorID, memberID string) error {
+	if strings.TrimSpace(memberID) == "" {
+		return fmt.Errorf("member id is required")
+	}
+
+	return s.repo.Transaction(ctx, func(tx Repository) error {
+		actor, err := tx.GetMemberByUser(ctx, actorID)
+		if err != nil {
+			return err
+		}
+		if actor.Role != RoleOwner {
+			return ErrNotOwner
+		}
+
+		member, err := tx.GetMember(ctx, actor.FamilyID, memberID)
+		if err != nil {
+			return err
+		}
+		if member.Role == RoleOwner {
+			return ErrCannotRemoveOwner
+		}
+
+		return tx.DeleteMember(ctx, actor.FamilyID, memberID)
+	})
+}
+
 func generateUniqueCode(ctx context.Context, repo Repository) (string, error) {
 	for i := 0; i < familyCodeAttempts; i++ {
 		code, err := generateCode(familyCodeLength)

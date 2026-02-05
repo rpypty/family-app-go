@@ -20,9 +20,11 @@ import (
 	analyticsdomain "family-app-go/internal/domain/analytics"
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
+	userdomain "family-app-go/internal/domain/user"
 	analyticsrepo "family-app-go/internal/repository/analytics"
 	expensesrepo "family-app-go/internal/repository/expenses"
 	familyrepo "family-app-go/internal/repository/family"
+	userrepo "family-app-go/internal/repository/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
 	"gorm.io/gorm"
@@ -72,9 +74,11 @@ func setupE2E(t *testing.T) *testEnv {
 	expensesService := expensesdomain.NewService(expensesRepo)
 	analyticsRepo := analyticsrepo.NewPostgres(dbConn)
 	analyticsService := analyticsdomain.NewService(analyticsRepo)
+	userRepo := userrepo.NewPostgres(dbConn)
+	userService := userdomain.NewService(userRepo)
 	handlers := handler.New(analyticsService, familyService, expensesService)
 
-	router := httpserver.NewRouter(cfg, handlers)
+	router := httpserver.NewRouter(cfg, handlers, userService)
 	server := httptest.NewServer(router)
 
 	return &testEnv{server: server, authServer: authServer, db: dbConn}
@@ -123,7 +127,7 @@ func newAuthServer(t *testing.T) *httptest.Server {
 
 func cleanDB(dbConn *gorm.DB) error {
 	return dbConn.WithContext(context.Background()).Exec(
-		"TRUNCATE TABLE expense_tags, expenses, tags, family_members, families RESTART IDENTITY CASCADE",
+		"TRUNCATE TABLE expense_tags, expenses, tags, family_members, families, user_profiles RESTART IDENTITY CASCADE",
 	).Error
 }
 
@@ -211,9 +215,11 @@ type familyResponse struct {
 }
 
 type familyMemberResponse struct {
-	UserID   string    `json:"user_id"`
-	Role     string    `json:"role"`
-	JoinedAt time.Time `json:"joined_at"`
+	UserID    string    `json:"user_id"`
+	Role      string    `json:"role"`
+	JoinedAt  time.Time `json:"joined_at"`
+	Email     *string   `json:"email"`
+	AvatarURL *string   `json:"avatar_url"`
 }
 
 type expenseResponse struct {
@@ -266,7 +272,8 @@ func TestE2EHealthAndAuth(t *testing.T) {
 		t.Fatalf("expected invalid_token, got %q", errResp.Error.Code)
 	}
 
-	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/auth/me", "user-1", nil)
+	userID := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/auth/me", userID, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
 	}
@@ -274,10 +281,10 @@ func TestE2EHealthAndAuth(t *testing.T) {
 	if err := json.Unmarshal(body, &me); err != nil {
 		t.Fatalf("decode me: %v", err)
 	}
-	if me.ID != "user-1" {
-		t.Fatalf("expected id user-1, got %q", me.ID)
+	if me.ID != userID {
+		t.Fatalf("expected id %s, got %q", userID, me.ID)
 	}
-	if me.Email != "user-1@example.com" {
+	if me.Email != userID+"@example.com" {
 		t.Fatalf("expected email, got %q", me.Email)
 	}
 }
@@ -332,8 +339,8 @@ func TestE2EFamilyFlow(t *testing.T) {
 	}
 
 	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/families/leave", user1, nil)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, string(body))
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", resp.StatusCode, string(body))
 	}
 
 	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/families/leave", user2, nil)
@@ -342,8 +349,8 @@ func TestE2EFamilyFlow(t *testing.T) {
 	}
 
 	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/families/leave", user1, nil)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d: %s", resp.StatusCode, string(body))
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", resp.StatusCode, string(body))
 	}
 
 	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/families/me", user1, nil)
@@ -445,5 +452,84 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/tags/"+tag.ID, user1, nil)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestE2EFamilyMembersManage(t *testing.T) {
+	env := setupE2E(t)
+	defer env.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	user1 := "33333333-3333-3333-3333-333333333333"
+	user2 := "44444444-4444-4444-4444-444444444444"
+
+	resp, body := requestJSON(t, client, http.MethodPost, env.server.URL+"/families", user1, map[string]string{
+		"name": "Ivanovs",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	var family familyResponse
+	if err := json.Unmarshal(body, &family); err != nil {
+		t.Fatalf("decode family: %v", err)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/families/join", user2, map[string]string{
+		"code": family.Code,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/families/me/members", user1, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	var members []familyMemberResponse
+	if err := json.Unmarshal(body, &members); err != nil {
+		t.Fatalf("decode members: %v", err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("expected 2 members, got %d", len(members))
+	}
+	for _, member := range members {
+		if member.Email == nil || *member.Email == "" {
+			t.Fatalf("expected email for member %s", member.UserID)
+		}
+		if member.AvatarURL == nil || *member.AvatarURL == "" {
+			t.Fatalf("expected avatar_url for member %s", member.UserID)
+		}
+	}
+
+	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/families/me/members/"+user1, user2, nil)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/families/me/members/"+user1, user1, nil)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/families/me/members/"+user2, user1, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/families/me/members/"+user2, user1, nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/families/me/members", user1, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	if err := json.Unmarshal(body, &members); err != nil {
+		t.Fatalf("decode members: %v", err)
+	}
+	if len(members) != 1 {
+		t.Fatalf("expected 1 member, got %d", len(members))
 	}
 }
