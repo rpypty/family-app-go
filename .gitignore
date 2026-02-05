@@ -1,0 +1,15 @@
+# Binaries
+/bin/
+/dist/
+
+# Test output
+*.out
+coverage*
+
+# Local env
+.env
+
+# Editor
+.DS_Store
+.idea/
+.vscode/
