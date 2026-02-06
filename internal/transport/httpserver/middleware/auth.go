@@ -12,10 +12,12 @@ import (
 )
 
 type SupabaseAuth struct {
-	baseURL string
-	apiKey  string
-	client  *http.Client
+	baseURL  string
+	apiKey   string
+	client   *http.Client
 	profiles ProfileSaver
+	skipAuth bool
+	mockUser User
 }
 
 type contextKey int
@@ -61,11 +63,34 @@ func NewSupabaseAuth(cfg config.SupabaseConfig, profiles ProfileSaver) *Supabase
 			Timeout: timeout,
 		},
 		profiles: profiles,
+		skipAuth: cfg.SkipAuth,
+		mockUser: User{
+			ID:        strings.TrimSpace(cfg.MockUserID),
+			Email:     strings.TrimSpace(cfg.MockUserEmail),
+			Name:      strings.TrimSpace(cfg.MockUserName),
+			AvatarURL: strings.TrimSpace(cfg.MockUserAvatar),
+		},
 	}
 }
 
 func (a *SupabaseAuth) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.skipAuth {
+			user := a.mockUser
+			if user.ID == "" {
+				writeError(w, http.StatusInternalServerError, "auth_not_configured", "auth mock user id not configured")
+				return
+			}
+			if a.profiles != nil {
+				if err := a.profiles.UpsertProfile(r.Context(), user.ID, user.Email, user.AvatarURL); err != nil {
+					log.Printf("auth: upsert profile failed: %v", err)
+				}
+			}
+			ctx := WithUser(r.Context(), user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
 		if a.baseURL == "" || a.apiKey == "" {
 			writeError(w, http.StatusInternalServerError, "auth_not_configured", "auth not configured")
 			return

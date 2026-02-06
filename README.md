@@ -44,6 +44,11 @@ On startup, the service applies SQL migrations from `migrations/` in filename or
 - `SUPABASE_URL` (required)
 - `SUPABASE_PUBLISHABLE_KEY` (required)
 - `SUPABASE_AUTH_TIMEOUT` (default `5s`)
+- `AUTH_SKIP` (default `false`, set `true` to skip auth and use mock user)
+- `AUTH_MOCK_USER_ID` (default `00000000-0000-0000-0000-000000000001`)
+- `AUTH_MOCK_USER_EMAIL` (optional)
+- `AUTH_MOCK_USER_NAME` (optional)
+- `AUTH_MOCK_USER_AVATAR_URL` (optional)
 
 ## Structure
 
@@ -69,6 +74,8 @@ On startup, the service applies SQL migrations from `migrations/` in filename or
 - `SUPABASE_URL` — Project URL из Supabase.
 - `SUPABASE_PUBLISHABLE_KEY` — `anon/public` key из Supabase.
 - `SUPABASE_AUTH_TIMEOUT` — таймаут запроса к Supabase Auth (опционально).
+- `AUTH_SKIP` — скипнуть Supabase Auth и использовать мокового пользователя (для локальной разработки).
+- `AUTH_MOCK_USER_ID` — user id для мок-авторизации.
 
 **Supabase Dashboard**
 1. `Project Settings -> API`: возьми `Project URL` и `anon/public` key.

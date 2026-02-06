@@ -483,6 +483,194 @@ paths:
       responses:
         '204':
           description: No Content
+  /todo-lists:
+    get:
+      summary: List todo lists
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+        - in: query
+          name: include_items
+          schema:
+            type: boolean
+            default: false
+        - in: query
+          name: items_archived
+          schema:
+            type: string
+            enum: [exclude, only, all]
+            default: exclude
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoListList'
+    post:
+      summary: Create todo list
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTodoListRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoList'
+  /todo-lists/{list_id}:
+    patch:
+      summary: Update todo list
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: list_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTodoListRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoList'
+        '404':
+          $ref: '#/components/responses/TodoListNotFound'
+    delete:
+      summary: Delete todo list
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: list_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/TodoListNotFound'
+  /todo-lists/{list_id}/items:
+    get:
+      summary: List todo items
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: list_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: archived
+          schema:
+            type: string
+            enum: [exclude, only, all]
+            default: exclude
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoItemList'
+        '404':
+          $ref: '#/components/responses/TodoListNotFound'
+    post:
+      summary: Create todo item
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: list_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTodoItemRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoItem'
+        '404':
+          $ref: '#/components/responses/TodoListNotFound'
+  /todo-items/{item_id}:
+    patch:
+      summary: Update todo item
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: item_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTodoItemRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoItem'
+        '404':
+          $ref: '#/components/responses/TodoItemNotFound'
+    delete:
+      summary: Delete todo item
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: item_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/TodoItemNotFound'
 components:
   securitySchemes:
     bearerAuth:
@@ -560,6 +748,26 @@ components:
             error:
               code: cannot_remove_owner
               message: Cannot remove owner
+    TodoListNotFound:
+      description: Todo list not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: todo_list_not_found
+              message: Todo list not found
+    TodoItemNotFound:
+      description: Todo item not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: todo_item_not_found
+              message: Todo item not found
   schemas:
     ErrorResponse:
       type: object
@@ -671,6 +879,95 @@ components:
         created_at:
           type: string
           format: date-time
+    TodoList:
+      type: object
+      required: [id, family_id, title, created_at, settings, items_total, items_completed, items_archived]
+      properties:
+        id:
+          type: string
+        family_id:
+          type: string
+        title:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        settings:
+          $ref: '#/components/schemas/TodoListSettings'
+        items_total:
+          type: integer
+        items_completed:
+          type: integer
+        items_archived:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TodoItem'
+    TodoListSettings:
+      type: object
+      required: [archive_completed]
+      properties:
+        archive_completed:
+          type: boolean
+    TodoItem:
+      type: object
+      required: [id, list_id, title, is_completed, is_archived, created_at]
+      properties:
+        id:
+          type: string
+        list_id:
+          type: string
+        title:
+          type: string
+        is_completed:
+          type: boolean
+        is_archived:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_by:
+          allOf:
+            - $ref: '#/components/schemas/TodoCompletedBy'
+          nullable: true
+    TodoCompletedBy:
+      type: object
+      required: [id, name, email]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+    TodoListList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TodoList'
+        total:
+          type: integer
+    TodoItemList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TodoItem'
+        total:
+          type: integer
     AnalyticsSummary:
       type: object
       required: [total_amount, currency, count, avg_per_day, from, to]
@@ -811,3 +1108,31 @@ components:
       properties:
         name:
           type: string
+    CreateTodoListRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        settings:
+          $ref: '#/components/schemas/TodoListSettings'
+    UpdateTodoListRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        settings:
+          $ref: '#/components/schemas/TodoListSettings'
+    CreateTodoItemRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+    UpdateTodoItemRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        is_completed:
+          type: boolean

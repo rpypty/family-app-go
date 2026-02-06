@@ -20,10 +20,12 @@ import (
 	analyticsdomain "family-app-go/internal/domain/analytics"
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
+	todosdomain "family-app-go/internal/domain/todos"
 	userdomain "family-app-go/internal/domain/user"
 	analyticsrepo "family-app-go/internal/repository/analytics"
 	expensesrepo "family-app-go/internal/repository/expenses"
 	familyrepo "family-app-go/internal/repository/family"
+	todosrepo "family-app-go/internal/repository/todos"
 	userrepo "family-app-go/internal/repository/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
@@ -76,7 +78,9 @@ func setupE2E(t *testing.T) *testEnv {
 	analyticsService := analyticsdomain.NewService(analyticsRepo)
 	userRepo := userrepo.NewPostgres(dbConn)
 	userService := userdomain.NewService(userRepo)
-	handlers := handler.New(analyticsService, familyService, expensesService)
+	todosRepo := todosrepo.NewPostgres(dbConn)
+	todosService := todosdomain.NewService(todosRepo)
+	handlers := handler.New(analyticsService, familyService, expensesService, todosService)
 
 	router := httpserver.NewRouter(cfg, handlers, userService)
 	server := httptest.NewServer(router)

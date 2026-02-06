@@ -51,6 +51,15 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.Pr
 			r.Get("/tags", handlers.ListTags)
 			r.Post("/tags", handlers.CreateTag)
 			r.Delete("/tags/{id}", handlers.DeleteTag)
+
+			r.Get("/todo-lists", handlers.ListTodoLists)
+			r.Post("/todo-lists", handlers.CreateTodoList)
+			r.Patch("/todo-lists/{list_id}", handlers.UpdateTodoList)
+			r.Delete("/todo-lists/{list_id}", handlers.DeleteTodoList)
+			r.Get("/todo-lists/{list_id}/items", handlers.ListTodoItems)
+			r.Post("/todo-lists/{list_id}/items", handlers.CreateTodoItem)
+			r.Patch("/todo-items/{item_id}", handlers.UpdateTodoItem)
+			r.Delete("/todo-items/{item_id}", handlers.DeleteTodoItem)
 		})
 	})
 

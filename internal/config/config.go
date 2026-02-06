@@ -31,6 +31,11 @@ type SupabaseConfig struct {
 	URL            string
 	PublishableKey string
 	AuthTimeout    time.Duration
+	SkipAuth       bool
+	MockUserID     string
+	MockUserEmail  string
+	MockUserName   string
+	MockUserAvatar string
 }
 
 func Load() Config {
@@ -59,6 +64,11 @@ func Load() Config {
 			URL:            getEnv("SUPABASE_URL", ""),
 			PublishableKey: getEnv("SUPABASE_PUBLISHABLE_KEY", getEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "")),
 			AuthTimeout:    getEnvDuration("SUPABASE_AUTH_TIMEOUT", 5*time.Second),
+			SkipAuth:       getEnvBool("AUTH_SKIP", false),
+			MockUserID:     getEnv("AUTH_MOCK_USER_ID", "00000000-0000-0000-0000-000000000001"),
+			MockUserEmail:  getEnv("AUTH_MOCK_USER_EMAIL", ""),
+			MockUserName:   getEnv("AUTH_MOCK_USER_NAME", ""),
+			MockUserAvatar: getEnv("AUTH_MOCK_USER_AVATAR_URL", ""),
 		},
 	}
 }
@@ -88,6 +98,18 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
 	if err != nil {
 		return fallback
 	}
