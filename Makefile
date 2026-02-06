@@ -18,3 +18,14 @@ e2e:
 
 test-e2e:
 	E2E_DB_DSN="postgres://admin:admin@localhost:55433/family_app?sslmode=disable" go test -tags e2e ./e2e/...
+
+
+# docker compse 
+
+compose-rebuild:
+	docker compose down
+	docker compose up --build -d
+
+compose-pg-dump:
+	docker compose exec -T db pg_dump -U admin -Fc family_app > ./pg-backup/family_app_$(date +%F_%H-%M-%S).dump
+
