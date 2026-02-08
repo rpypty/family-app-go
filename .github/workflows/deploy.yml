@@ -22,14 +22,23 @@ jobs:
       - name: Notify Telegram (success)
         if: success()
         run: |
-          text=$'✅ Deploy success\nRepo: ${{ github.repository }}\nBy: ${{ github.event.pusher.name }}'
+          short_sha="${GITHUB_SHA::7}"
+          text="✅ Deploy success
+          Repo: ${{ github.repository }}
+          Branch: ${{ github.ref_name }} (${short_sha})
+          By: ${{ github.event.pusher.name }}"
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             --data-urlencode "chat_id=${{ secrets.TG_CHAT_ID }}" \
             --data-urlencode "text=${text}"
       - name: Notify Telegram (failure)
         if: failure()
         run: |
-          text=$'❌ Deploy failed\nRepo: ${{ github.repository }}\nBy: ${{ github.event.pusher.name }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          short_sha="${GITHUB_SHA::7}"
+          text="❌ Deploy failed
+          Repo: ${{ github.repository }}
+          Branch: ${{ github.ref_name }} (${short_sha})
+          By: ${{ github.event.pusher.name }}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             --data-urlencode "chat_id=${{ secrets.TG_CHAT_ID }}" \
             --data-urlencode "text=${text}"
