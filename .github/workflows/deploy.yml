@@ -16,7 +16,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /root/Repos/family-app/family-app-go
+            cd /root/Repos/family-app-go
             git pull
             docker compose up -d --build
       - name: Notify Telegram (success)
