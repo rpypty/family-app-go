@@ -3,7 +3,6 @@ package gym
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	gymdomain "family-app-go/internal/domain/gym"
 	"gorm.io/gorm"
