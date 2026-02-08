@@ -90,6 +90,9 @@ func (s *Service) CreateTodoList(ctx context.Context, input CreateTodoListInput)
 	}
 
 	err = s.repo.Transaction(ctx, func(tx Repository) error {
+		if err := tx.LockFamilyOrders(ctx, input.FamilyID); err != nil {
+			return err
+		}
 		maxOrder, err := tx.GetMaxOrder(ctx, input.FamilyID)
 		if err != nil {
 			return err
@@ -154,6 +157,11 @@ func (s *Service) UpdateTodoList(ctx context.Context, input UpdateTodoListInput)
 	}
 
 	err = s.repo.Transaction(ctx, func(tx Repository) error {
+		if desiredOrder != nil {
+			if err := tx.LockFamilyOrders(ctx, input.FamilyID); err != nil {
+				return err
+			}
+		}
 		// Ensure we work with the latest order inside the transaction.
 		current, err := tx.GetTodoListByID(ctx, input.FamilyID, input.ID)
 		if err != nil {
@@ -172,16 +180,25 @@ func (s *Service) UpdateTodoList(ctx context.Context, input UpdateTodoListInput)
 				newOrder = maxOrder
 			}
 
-			if newOrder > list.Order {
-				if err := tx.ShiftOrderRange(ctx, input.FamilyID, list.Order+1, newOrder, -1); err != nil {
+			if newOrder != list.Order {
+				tempOrder := maxOrder + 1
+				list.Order = tempOrder
+				if err := tx.UpdateTodoList(ctx, list); err != nil {
 					return err
 				}
-			} else if newOrder < list.Order {
-				if err := tx.ShiftOrderRange(ctx, input.FamilyID, newOrder, list.Order-1, 1); err != nil {
-					return err
+
+				if newOrder > current.Order {
+					if err := tx.ShiftOrderRange(ctx, input.FamilyID, current.Order+1, newOrder, -1); err != nil {
+						return err
+					}
+				} else {
+					if err := tx.ShiftOrderRange(ctx, input.FamilyID, newOrder, current.Order-1, 1); err != nil {
+						return err
+					}
 				}
+
+				list.Order = newOrder
 			}
-			list.Order = newOrder
 		}
 
 		if err := tx.UpdateTodoList(ctx, list); err != nil {

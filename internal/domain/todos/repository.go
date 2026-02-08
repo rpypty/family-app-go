@@ -4,6 +4,7 @@ import "context"
 
 type Repository interface {
 	Transaction(ctx context.Context, fn func(Repository) error) error
+	LockFamilyOrders(ctx context.Context, familyID string) error
 	ListTodoLists(ctx context.Context, familyID string, filter ListFilter) ([]TodoList, int64, error)
 	GetTodoListByID(ctx context.Context, familyID, listID string) (*TodoList, error)
 	CreateTodoList(ctx context.Context, list *TodoList) error

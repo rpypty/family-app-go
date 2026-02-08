@@ -24,6 +24,12 @@ func (r *PostgresRepository) Transaction(ctx context.Context, fn func(todosdomai
 	})
 }
 
+func (r *PostgresRepository) LockFamilyOrders(ctx context.Context, familyID string) error {
+	return r.db.WithContext(ctx).
+		Exec("SELECT pg_advisory_xact_lock(hashtext(?))", familyID).
+		Error
+}
+
 func (r *PostgresRepository) ListTodoLists(ctx context.Context, familyID string, filter todosdomain.ListFilter) ([]todosdomain.TodoList, int64, error) {
 	query := r.db.WithContext(ctx).Model(&todosdomain.TodoList{}).Where("family_id = ?", familyID)
 	search := strings.TrimSpace(filter.Query)
@@ -103,13 +109,31 @@ func (r *PostgresRepository) GetMaxOrder(ctx context.Context, familyID string) (
 }
 
 func (r *PostgresRepository) ShiftOrderRange(ctx context.Context, familyID string, from, to, delta int) error {
-	if from > to {
+	if from > to || delta == 0 {
 		return nil
 	}
-	return r.db.WithContext(ctx).
+
+	maxOrder, err := r.GetMaxOrder(ctx, familyID)
+	if err != nil {
+		return err
+	}
+
+	tempOffset := maxOrder + 1 + (to - from + 1)
+	if tempOffset < 1 {
+		tempOffset = 1
+	}
+
+	if err := r.db.WithContext(ctx).
 		Model(&todosdomain.TodoList{}).
 		Where("family_id = ? AND order_index BETWEEN ? AND ? AND deleted_at IS NULL", familyID, from, to).
-		Update("order_index", gorm.Expr("order_index + ?", delta)).Error
+		Update("order_index", gorm.Expr("order_index + ?", tempOffset)).Error; err != nil {
+		return err
+	}
+
+	return r.db.WithContext(ctx).
+		Model(&todosdomain.TodoList{}).
+		Where("family_id = ? AND order_index BETWEEN ? AND ? AND deleted_at IS NULL", familyID, from+tempOffset, to+tempOffset).
+		Update("order_index", gorm.Expr("order_index - ? + ?", tempOffset, delta)).Error
 }
 
 func (r *PostgresRepository) SetCompletedItemsArchived(ctx context.Context, listID string, archived bool) error {
