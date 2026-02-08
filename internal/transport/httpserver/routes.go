@@ -61,6 +61,24 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.Pr
 			r.Post("/todo-lists/{list_id}/items", handlers.CreateTodoItem)
 			r.Patch("/todo-items/{item_id}", handlers.UpdateTodoItem)
 			r.Delete("/todo-items/{item_id}", handlers.DeleteTodoItem)
+
+			r.Get("/gym/entries", handlers.ListGymEntries)
+			r.Post("/gym/entries", handlers.CreateGymEntry)
+			r.Put("/gym/entries/{id}", handlers.UpdateGymEntry)
+			r.Delete("/gym/entries/{id}", handlers.DeleteGymEntry)
+
+			r.Get("/gym/workouts", handlers.ListWorkouts)
+			r.Get("/gym/workouts/{id}", handlers.GetWorkout)
+			r.Post("/gym/workouts", handlers.CreateWorkout)
+			r.Put("/gym/workouts/{id}", handlers.UpdateWorkout)
+			r.Delete("/gym/workouts/{id}", handlers.DeleteWorkout)
+
+			r.Get("/gym/templates", handlers.ListTemplates)
+			r.Post("/gym/templates", handlers.CreateTemplate)
+			r.Put("/gym/templates/{id}", handlers.UpdateTemplate)
+			r.Delete("/gym/templates/{id}", handlers.DeleteTemplate)
+
+			r.Get("/gym/exercises", handlers.ListExercises)
 		})
 	})
 
