@@ -30,12 +30,12 @@ func (r *PostgresRepository) ListExpenses(ctx context.Context, familyID string, 
 	if filter.To != nil {
 		query = query.Where("date <= ?", *filter.To)
 	}
-	if filter.TagID != "" {
-		query = query.Joins("join expense_tags on expense_tags.expense_id = expenses.id").Where("expense_tags.tag_id = ?", filter.TagID)
+	if len(filter.TagIDs) > 0 {
+		query = query.Joins("join expense_tags on expense_tags.expense_id = expenses.id").Where("expense_tags.tag_id IN ?", filter.TagIDs)
 	}
 
 	countQuery := query.Session(&gorm.Session{})
-	if filter.TagID != "" {
+	if len(filter.TagIDs) > 0 {
 		countQuery = countQuery.Distinct("expenses.id")
 	}
 
@@ -44,7 +44,7 @@ func (r *PostgresRepository) ListExpenses(ctx context.Context, familyID string, 
 		return nil, 0, err
 	}
 
-	if filter.TagID != "" {
+	if len(filter.TagIDs) > 0 {
 		query = query.Distinct()
 	}
 
@@ -169,7 +169,54 @@ func (r *PostgresRepository) CreateTag(ctx context.Context, tag *expensesdomain.
 	return r.db.WithContext(ctx).Create(tag).Error
 }
 
+func (r *PostgresRepository) GetTagByID(ctx context.Context, familyID, tagID string) (*expensesdomain.Tag, error) {
+	var tag expensesdomain.Tag
+	if err := r.db.WithContext(ctx).
+		Where("family_id = ? AND id = ?", familyID, tagID).
+		First(&tag).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, expensesdomain.ErrTagNotFound
+		}
+		return nil, err
+	}
+	return &tag, nil
+}
+
+func (r *PostgresRepository) UpdateTag(ctx context.Context, tag *expensesdomain.Tag) error {
+	return r.db.WithContext(ctx).
+		Model(&expensesdomain.Tag{}).
+		Where("id = ? AND family_id = ?", tag.ID, tag.FamilyID).
+		Updates(map[string]interface{}{
+			"name": tag.Name,
+		}).Error
+}
+
+func (r *PostgresRepository) CountTagsByName(ctx context.Context, familyID, name, excludeID string) (int64, error) {
+	query := r.db.WithContext(ctx).
+		Model(&expensesdomain.Tag{}).
+		Where("family_id = ? AND lower(name) = lower(?)", familyID, name)
+	if excludeID != "" {
+		query = query.Where("id <> ?", excludeID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (r *PostgresRepository) DeleteTag(ctx context.Context, familyID, tagID string) (bool, error) {
 	result := r.db.WithContext(ctx).Delete(&expensesdomain.Tag{}, "family_id = ? AND id = ?", familyID, tagID)
 	return result.RowsAffected > 0, result.Error
+}
+
+func (r *PostgresRepository) CountExpenseTagsByTagID(ctx context.Context, tagID string) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&expensesdomain.ExpenseTag{}).
+		Where("tag_id = ?", tagID).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }

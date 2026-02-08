@@ -11,6 +11,8 @@ type TodoList struct {
 	FamilyID         string         `gorm:"type:uuid;index;not null"`
 	Title            string         `gorm:"not null"`
 	ArchiveCompleted bool           `gorm:"not null;default:false;column:archive_completed"`
+	IsCollapsed      bool           `gorm:"not null;default:false;column:is_collapsed"`
+	Order            int            `gorm:"not null;column:order_index"`
 	CreatedAt        time.Time      `gorm:"autoCreateTime"`
 	DeletedAt        gorm.DeletedAt `gorm:"index"`
 }
@@ -67,6 +69,7 @@ type CreateTodoListInput struct {
 	FamilyID         string
 	Title            string
 	ArchiveCompleted bool
+	Order            *int
 }
 
 type UpdateTodoListInput struct {
@@ -74,6 +77,8 @@ type UpdateTodoListInput struct {
 	FamilyID         string
 	Title            *string
 	ArchiveCompleted *bool
+	IsCollapsed      *bool
+	Order            *int
 }
 
 type CreateTodoItemInput struct {

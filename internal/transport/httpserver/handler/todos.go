@@ -19,11 +19,14 @@ type todoListSettingsRequest struct {
 type createTodoListRequest struct {
 	Title    string                   `json:"title"`
 	Settings *todoListSettingsRequest `json:"settings"`
+	Order    *int                     `json:"order"`
 }
 
 type updateTodoListRequest struct {
-	Title    *string                  `json:"title"`
-	Settings *todoListSettingsRequest `json:"settings"`
+	Title       *string                  `json:"title"`
+	Settings    *todoListSettingsRequest `json:"settings"`
+	IsCollapsed *bool                    `json:"is_collapsed"`
+	Order       *int                     `json:"order"`
 }
 
 type createTodoItemRequest struct {
@@ -43,6 +46,8 @@ type todoListResponse struct {
 	ID             string                   `json:"id"`
 	FamilyID       string                   `json:"family_id"`
 	Title          string                   `json:"title"`
+	IsCollapsed    bool                     `json:"is_collapsed"`
+	Order          int                      `json:"order"`
 	CreatedAt      time.Time                `json:"created_at"`
 	Settings       todoListSettingsResponse `json:"settings"`
 	ItemsTotal     int64                    `json:"items_total"`
@@ -152,6 +157,10 @@ func (h *Handlers) CreateTodoList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "title is required")
 		return
 	}
+	if req.Order != nil && *req.Order < 0 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "order must be non-negative")
+		return
+	}
 
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
@@ -178,6 +187,7 @@ func (h *Handlers) CreateTodoList(w http.ResponseWriter, r *http.Request) {
 		FamilyID:         family.ID,
 		Title:            req.Title,
 		ArchiveCompleted: archiveCompleted,
+		Order:            req.Order,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -194,6 +204,8 @@ func (h *Handlers) CreateTodoList(w http.ResponseWriter, r *http.Request) {
 		ID:             list.ID,
 		FamilyID:       list.FamilyID,
 		Title:          list.Title,
+		IsCollapsed:    list.IsCollapsed,
+		Order:          list.Order,
 		CreatedAt:      list.CreatedAt,
 		Settings:       todoListSettingsResponse{ArchiveCompleted: list.ArchiveCompleted},
 		ItemsTotal:     counts.ItemsTotal,
@@ -235,12 +247,16 @@ func (h *Handlers) UpdateTodoList(w http.ResponseWriter, r *http.Request) {
 	if req.Settings != nil {
 		archiveCompleted = req.Settings.ArchiveCompleted
 	}
-	if req.Title == nil && archiveCompleted == nil {
+	if req.Title == nil && archiveCompleted == nil && req.IsCollapsed == nil && req.Order == nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "no fields to update")
 		return
 	}
 	if req.Title != nil && strings.TrimSpace(*req.Title) == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "title is required")
+		return
+	}
+	if req.Order != nil && *req.Order < 0 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "order must be non-negative")
 		return
 	}
 
@@ -249,6 +265,8 @@ func (h *Handlers) UpdateTodoList(w http.ResponseWriter, r *http.Request) {
 		FamilyID:         family.ID,
 		Title:            req.Title,
 		ArchiveCompleted: archiveCompleted,
+		IsCollapsed:      req.IsCollapsed,
+		Order:            req.Order,
 	})
 	if err != nil {
 		switch {
@@ -270,6 +288,8 @@ func (h *Handlers) UpdateTodoList(w http.ResponseWriter, r *http.Request) {
 		ID:             list.ID,
 		FamilyID:       list.FamilyID,
 		Title:          list.Title,
+		IsCollapsed:    list.IsCollapsed,
+		Order:          list.Order,
 		CreatedAt:      list.CreatedAt,
 		Settings:       todoListSettingsResponse{ArchiveCompleted: list.ArchiveCompleted},
 		ItemsTotal:     counts.ItemsTotal,
@@ -551,6 +571,8 @@ func toTodoListResponse(item todosdomain.ListWithItems, includeItems bool) todoL
 		ID:             item.List.ID,
 		FamilyID:       item.List.FamilyID,
 		Title:          item.List.Title,
+		IsCollapsed:    item.List.IsCollapsed,
+		Order:          item.List.Order,
 		CreatedAt:      item.List.CreatedAt,
 		Settings:       todoListSettingsResponse{ArchiveCompleted: item.List.ArchiveCompleted},
 		ItemsTotal:     item.Counts.ItemsTotal,

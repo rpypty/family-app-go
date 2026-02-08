@@ -71,9 +71,17 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	filter := expensesdomain.ListFilter{
 		From:   from,
 		To:     to,
-		TagID:  strings.TrimSpace(query.Get("tag_id")),
 		Limit:  limit,
 		Offset: offset,
+	}
+	tagIDs := parseCSV(query.Get("tag_ids"))
+	if len(tagIDs) > 0 {
+		filter.TagIDs = tagIDs
+	} else {
+		tagID := strings.TrimSpace(query.Get("tag_id"))
+		if tagID != "" {
+			filter.TagIDs = []string{tagID}
+		}
 	}
 
 	items, total, err := h.Expenses.ListExpenses(r.Context(), family.ID, filter)

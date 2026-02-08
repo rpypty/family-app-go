@@ -2,6 +2,7 @@ package todos
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 
@@ -36,7 +37,7 @@ func (r *PostgresRepository) ListTodoLists(ctx context.Context, familyID string,
 		return nil, 0, err
 	}
 
-	query = query.Order("created_at desc")
+	query = query.Order("order_index asc, created_at asc")
 	if filter.Limit > 0 {
 		query = query.Limit(filter.Limit)
 	}
@@ -76,12 +77,39 @@ func (r *PostgresRepository) UpdateTodoList(ctx context.Context, list *todosdoma
 		Updates(map[string]interface{}{
 			"title":             list.Title,
 			"archive_completed": list.ArchiveCompleted,
+			"is_collapsed":      list.IsCollapsed,
+			"order_index":       list.Order,
 		}).Error
 }
 
 func (r *PostgresRepository) SoftDeleteTodoList(ctx context.Context, familyID, listID string) (bool, error) {
 	result := r.db.WithContext(ctx).Delete(&todosdomain.TodoList{}, "family_id = ? AND id = ?", familyID, listID)
 	return result.RowsAffected > 0, result.Error
+}
+
+func (r *PostgresRepository) GetMaxOrder(ctx context.Context, familyID string) (int, error) {
+	var max sql.NullInt64
+	if err := r.db.WithContext(ctx).
+		Model(&todosdomain.TodoList{}).
+		Select("MAX(order_index)").
+		Where("family_id = ?", familyID).
+		Scan(&max).Error; err != nil {
+		return 0, err
+	}
+	if !max.Valid {
+		return -1, nil
+	}
+	return int(max.Int64), nil
+}
+
+func (r *PostgresRepository) ShiftOrderRange(ctx context.Context, familyID string, from, to, delta int) error {
+	if from > to {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Model(&todosdomain.TodoList{}).
+		Where("family_id = ? AND order_index BETWEEN ? AND ? AND deleted_at IS NULL", familyID, from, to).
+		Update("order_index", gorm.Expr("order_index + ?", delta)).Error
 }
 
 func (r *PostgresRepository) SetCompletedItemsArchived(ctx context.Context, listID string, archived bool) error {

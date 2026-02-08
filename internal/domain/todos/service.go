@@ -89,7 +89,31 @@ func (s *Service) CreateTodoList(ctx context.Context, input CreateTodoListInput)
 		ArchiveCompleted: input.ArchiveCompleted,
 	}
 
-	if err := s.repo.CreateTodoList(ctx, &list); err != nil {
+	err = s.repo.Transaction(ctx, func(tx Repository) error {
+		maxOrder, err := tx.GetMaxOrder(ctx, input.FamilyID)
+		if err != nil {
+			return err
+		}
+
+		order := maxOrder + 1
+		if input.Order != nil {
+			if *input.Order < 0 {
+				return fmt.Errorf("order must be non-negative")
+			}
+			if *input.Order <= maxOrder {
+				order = *input.Order
+				if err := tx.ShiftOrderRange(ctx, input.FamilyID, order, maxOrder, 1); err != nil {
+					return err
+				}
+			} else if *input.Order == maxOrder+1 {
+				order = *input.Order
+			}
+		}
+
+		list.Order = order
+		return tx.CreateTodoList(ctx, &list)
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -97,7 +121,7 @@ func (s *Service) CreateTodoList(ctx context.Context, input CreateTodoListInput)
 }
 
 func (s *Service) UpdateTodoList(ctx context.Context, input UpdateTodoListInput) (*TodoList, error) {
-	if input.Title == nil && input.ArchiveCompleted == nil {
+	if input.Title == nil && input.ArchiveCompleted == nil && input.IsCollapsed == nil && input.Order == nil {
 		return nil, fmt.Errorf("no fields to update")
 	}
 
@@ -107,6 +131,7 @@ func (s *Service) UpdateTodoList(ctx context.Context, input UpdateTodoListInput)
 	}
 
 	archiveChanged := false
+	var desiredOrder *int
 	if input.Title != nil {
 		trimmed := strings.TrimSpace(*input.Title)
 		if trimmed == "" {
@@ -118,8 +143,47 @@ func (s *Service) UpdateTodoList(ctx context.Context, input UpdateTodoListInput)
 		archiveChanged = list.ArchiveCompleted != *input.ArchiveCompleted
 		list.ArchiveCompleted = *input.ArchiveCompleted
 	}
+	if input.IsCollapsed != nil {
+		list.IsCollapsed = *input.IsCollapsed
+	}
+	if input.Order != nil {
+		if *input.Order < 0 {
+			return nil, fmt.Errorf("order must be non-negative")
+		}
+		desiredOrder = input.Order
+	}
 
 	err = s.repo.Transaction(ctx, func(tx Repository) error {
+		// Ensure we work with the latest order inside the transaction.
+		current, err := tx.GetTodoListByID(ctx, input.FamilyID, input.ID)
+		if err != nil {
+			return err
+		}
+		list.Order = current.Order
+
+		if desiredOrder != nil {
+			newOrder := *desiredOrder
+			maxOrder, err := tx.GetMaxOrder(ctx, input.FamilyID)
+			if err != nil {
+				return err
+			}
+
+			if newOrder > maxOrder {
+				newOrder = maxOrder
+			}
+
+			if newOrder > list.Order {
+				if err := tx.ShiftOrderRange(ctx, input.FamilyID, list.Order+1, newOrder, -1); err != nil {
+					return err
+				}
+			} else if newOrder < list.Order {
+				if err := tx.ShiftOrderRange(ctx, input.FamilyID, newOrder, list.Order-1, 1); err != nil {
+					return err
+				}
+			}
+			list.Order = newOrder
+		}
+
 		if err := tx.UpdateTodoList(ctx, list); err != nil {
 			return err
 		}

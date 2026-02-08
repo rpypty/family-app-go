@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,8 +41,8 @@ func (r *fakeExpensesRepo) ListExpenses(ctx context.Context, familyID string, fi
 		if filter.To != nil && expense.Date.After(*filter.To) {
 			continue
 		}
-		if filter.TagID != "" {
-			if !contains(r.expenseTags[expense.ID], filter.TagID) {
+		if len(filter.TagIDs) > 0 {
+			if !containsAny(r.expenseTags[expense.ID], filter.TagIDs) {
 				continue
 			}
 		}
@@ -143,6 +144,38 @@ func (r *fakeExpensesRepo) CreateTag(ctx context.Context, tag *Tag) error {
 	return nil
 }
 
+func (r *fakeExpensesRepo) GetTagByID(ctx context.Context, familyID, tagID string) (*Tag, error) {
+	tag, ok := r.tags[tagID]
+	if !ok || tag.FamilyID != familyID {
+		return nil, ErrTagNotFound
+	}
+	return tag, nil
+}
+
+func (r *fakeExpensesRepo) UpdateTag(ctx context.Context, tag *Tag) error {
+	if _, ok := r.tags[tag.ID]; !ok {
+		return ErrTagNotFound
+	}
+	r.tags[tag.ID] = tag
+	return nil
+}
+
+func (r *fakeExpensesRepo) CountTagsByName(ctx context.Context, familyID, name, excludeID string) (int64, error) {
+	var count int64
+	for _, tag := range r.tags {
+		if tag.FamilyID != familyID {
+			continue
+		}
+		if excludeID != "" && tag.ID == excludeID {
+			continue
+		}
+		if strings.EqualFold(tag.Name, name) {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (r *fakeExpensesRepo) DeleteTag(ctx context.Context, familyID, tagID string) (bool, error) {
 	tag, ok := r.tags[tagID]
 	if !ok || tag.FamilyID != familyID {
@@ -150,6 +183,16 @@ func (r *fakeExpensesRepo) DeleteTag(ctx context.Context, familyID, tagID string
 	}
 	delete(r.tags, tagID)
 	return true, nil
+}
+
+func (r *fakeExpensesRepo) CountExpenseTagsByTagID(ctx context.Context, tagID string) (int64, error) {
+	var count int64
+	for _, tags := range r.expenseTags {
+		if contains(tags, tagID) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func TestCreateExpenseSuccess(t *testing.T) {
@@ -289,6 +332,56 @@ func TestListExpensesMergesTags(t *testing.T) {
 	}
 }
 
+func TestListExpensesFilterByTagIDsSingle(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.expenses["exp-1"] = &Expense{ID: "exp-1", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC)}
+	repo.expenses["exp-2"] = &Expense{ID: "exp-2", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC)}
+	repo.expenseTags["exp-1"] = []string{tagID1}
+
+	svc := NewService(repo)
+	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{TagIDs: []string{tagID1}})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if total != 1 || len(items) != 1 || items[0].ID != "exp-1" {
+		t.Fatalf("expected only exp-1, got %+v", items)
+	}
+}
+
+func TestListExpensesFilterByTagIDsMultiple(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.expenses["exp-1"] = &Expense{ID: "exp-1", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC)}
+	repo.expenses["exp-2"] = &Expense{ID: "exp-2", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC)}
+	repo.expenses["exp-3"] = &Expense{ID: "exp-3", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 3, 0, 0, 0, 0, time.UTC)}
+	repo.expenseTags["exp-1"] = []string{tagID1}
+	repo.expenseTags["exp-2"] = []string{"22222222-2222-2222-2222-222222222222"}
+	repo.expenseTags["exp-3"] = []string{"33333333-3333-3333-3333-333333333333"}
+
+	svc := NewService(repo)
+	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{TagIDs: []string{tagID1, "22222222-2222-2222-2222-222222222222"}})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if total != 2 || len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+}
+
+func TestListExpensesFilterByTagIDsEmptyIgnored(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.expenses["exp-1"] = &Expense{ID: "exp-1", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC)}
+	repo.expenses["exp-2"] = &Expense{ID: "exp-2", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC)}
+
+	svc := NewService(repo)
+	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{TagIDs: []string{}})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if total != 2 || len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+}
+
 func TestDeleteExpenseNotFound(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
@@ -328,6 +421,15 @@ func TestDeleteTagNotFound(t *testing.T) {
 func contains(values []string, value string) bool {
 	for _, item := range values {
 		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAny(values []string, candidates []string) bool {
+	for _, candidate := range candidates {
+		if contains(values, candidate) {
 			return true
 		}
 	}

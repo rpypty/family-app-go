@@ -34,7 +34,7 @@ type ExpenseWithTags struct {
 type ListFilter struct {
 	From   *time.Time
 	To     *time.Time
-	TagID  string
+	TagIDs []string
 	Limit  int
 	Offset int
 }

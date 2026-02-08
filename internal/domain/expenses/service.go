@@ -163,9 +163,9 @@ func (s *Service) ListTags(ctx context.Context, familyID string) ([]Tag, error) 
 }
 
 func (s *Service) CreateTag(ctx context.Context, familyID, name string) (*Tag, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, fmt.Errorf("name is required")
+	name, err := validateTagName(name)
+	if err != nil {
+		return nil, err
 	}
 
 	id, err := newUUID()
@@ -186,7 +186,41 @@ func (s *Service) CreateTag(ctx context.Context, familyID, name string) (*Tag, e
 	return &tag, nil
 }
 
+func (s *Service) UpdateTag(ctx context.Context, familyID, tagID, name string) (*Tag, error) {
+	name, err := validateTagName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	tag, err := s.repo.GetTagByID(ctx, familyID, tagID)
+	if err != nil {
+		return nil, err
+	}
+
+	count, err := s.repo.CountTagsByName(ctx, familyID, name, tag.ID)
+	if err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		return nil, ErrTagNameTaken
+	}
+
+	tag.Name = name
+	if err := s.repo.UpdateTag(ctx, tag); err != nil {
+		return nil, err
+	}
+
+	return tag, nil
+}
+
 func (s *Service) DeleteTag(ctx context.Context, familyID, tagID string) error {
+	inUse, err := s.repo.CountExpenseTagsByTagID(ctx, tagID)
+	if err != nil {
+		return err
+	}
+	if inUse > 0 {
+		return ErrTagInUse
+	}
 	deleted, err := s.repo.DeleteTag(ctx, familyID, tagID)
 	if err != nil {
 		return err
@@ -236,6 +270,18 @@ func validateTagIDs(tagIDs []string) error {
 		}
 	}
 	return nil
+}
+
+func validateTagName(name string) (string, error) {
+	const maxLen = 50
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("name is required")
+	}
+	if len([]rune(name)) > maxLen {
+		return "", fmt.Errorf("name must be at most %d characters", maxLen)
+	}
+	return name, nil
 }
 
 func isUUID(value string) bool {

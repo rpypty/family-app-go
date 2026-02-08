@@ -16,6 +16,10 @@ type createTagRequest struct {
 	Name string `json:"name"`
 }
 
+type updateTagRequest struct {
+	Name string `json:"name"`
+}
+
 func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
@@ -60,6 +64,10 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 
 	if strings.TrimSpace(req.Name) == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "name is required")
+		return
+	}
+	if len([]rune(strings.TrimSpace(req.Name))) > 50 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "name must be at most 50 characters")
 		return
 	}
 
@@ -120,11 +128,72 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
 			return
 		}
+		if errors.Is(err, expensesdomain.ErrTagInUse) {
+			writeError(w, http.StatusConflict, "tag_in_use", "Tag is used by expenses")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
+	tagID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if tagID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
+		return
+	}
+
+	var req updateTagRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "invalid json body")
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "name is required")
+		return
+	}
+	if len([]rune(strings.TrimSpace(req.Name))) > 50 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "name must be at most 50 characters")
+		return
+	}
+
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
+		return
+	}
+
+	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
+	if err != nil {
+		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+
+	updated, err := h.Expenses.UpdateTag(r.Context(), family.ID, tagID, req.Name)
+	if err != nil {
+		switch {
+		case errors.Is(err, expensesdomain.ErrTagNotFound):
+			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
+		case errors.Is(err, expensesdomain.ErrTagNameTaken):
+			writeError(w, http.StatusConflict, "tag_name_taken", "Tag name already exists")
+		default:
+			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, tagResponse{
+		ID:        updated.ID,
+		Name:      updated.Name,
+		CreatedAt: updated.CreatedAt,
+	})
 }
 
 type tagResponse struct {

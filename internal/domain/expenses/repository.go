@@ -14,5 +14,9 @@ type Repository interface {
 	CountTagsByIDs(ctx context.Context, familyID string, tagIDs []string) (int64, error)
 	ListTags(ctx context.Context, familyID string) ([]Tag, error)
 	CreateTag(ctx context.Context, tag *Tag) error
+	GetTagByID(ctx context.Context, familyID, tagID string) (*Tag, error)
+	UpdateTag(ctx context.Context, tag *Tag) error
+	CountTagsByName(ctx context.Context, familyID, name, excludeID string) (int64, error)
 	DeleteTag(ctx context.Context, familyID, tagID string) (bool, error)
+	CountExpenseTagsByTagID(ctx context.Context, tagID string) (int64, error)
 }

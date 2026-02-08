@@ -367,6 +367,12 @@ paths:
           name: tag_id
           schema:
             type: string
+          description: Single tag id filter. Ignored if tag_ids is provided.
+        - in: query
+          name: tag_ids
+          schema:
+            type: string
+          description: Comma-separated list of tag ids. Matches expenses with any of the tags.
         - in: query
           name: limit
           schema:
@@ -470,6 +476,33 @@ paths:
               schema:
                 $ref: '#/components/schemas/Tag'
   /tags/{id}:
+    patch:
+      summary: Update tag
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTagRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '404':
+          $ref: '#/components/responses/TagNotFound'
+        '409':
+          $ref: '#/components/responses/TagNameTaken'
     delete:
       summary: Delete tag
       security:
@@ -483,6 +516,10 @@ paths:
       responses:
         '204':
           description: No Content
+        '404':
+          $ref: '#/components/responses/TagNotFound'
+        '409':
+          $ref: '#/components/responses/TagInUse'
   /todo-lists:
     get:
       summary: List todo lists
@@ -768,6 +805,36 @@ components:
             error:
               code: todo_item_not_found
               message: Todo item not found
+    TagNotFound:
+      description: Tag not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: tag_not_found
+              message: Tag not found
+    TagInUse:
+      description: Tag is used by expenses
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: tag_in_use
+              message: Tag is used by expenses
+    TagNameTaken:
+      description: Tag name already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: tag_name_taken
+              message: Tag name already exists
   schemas:
     ErrorResponse:
       type: object
@@ -881,7 +948,7 @@ components:
           format: date-time
     TodoList:
       type: object
-      required: [id, family_id, title, created_at, settings, items_total, items_completed, items_archived]
+      required: [id, family_id, title, is_collapsed, order, created_at, settings, items_total, items_completed, items_archived]
       properties:
         id:
           type: string
@@ -889,6 +956,10 @@ components:
           type: string
         title:
           type: string
+        is_collapsed:
+          type: boolean
+        order:
+          type: integer
         created_at:
           type: string
           format: date-time
@@ -1108,6 +1179,12 @@ components:
       properties:
         name:
           type: string
+    UpdateTagRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
     CreateTodoListRequest:
       type: object
       required: [title]
@@ -1116,6 +1193,8 @@ components:
           type: string
         settings:
           $ref: '#/components/schemas/TodoListSettings'
+        order:
+          type: integer
     UpdateTodoListRequest:
       type: object
       properties:
@@ -1123,6 +1202,10 @@ components:
           type: string
         settings:
           $ref: '#/components/schemas/TodoListSettings'
+        is_collapsed:
+          type: boolean
+        order:
+          type: integer
     CreateTodoItemRequest:
       type: object
       required: [title]

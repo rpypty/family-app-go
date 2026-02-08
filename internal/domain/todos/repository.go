@@ -9,6 +9,8 @@ type Repository interface {
 	CreateTodoList(ctx context.Context, list *TodoList) error
 	UpdateTodoList(ctx context.Context, list *TodoList) error
 	SoftDeleteTodoList(ctx context.Context, familyID, listID string) (bool, error)
+	GetMaxOrder(ctx context.Context, familyID string) (int, error)
+	ShiftOrderRange(ctx context.Context, familyID string, from, to, delta int) error
 	SetCompletedItemsArchived(ctx context.Context, listID string, archived bool) error
 	SoftDeleteItemsByList(ctx context.Context, listID string) error
 	CountItemsByListIDs(ctx context.Context, listIDs []string) (map[string]ListItemCounts, error)
