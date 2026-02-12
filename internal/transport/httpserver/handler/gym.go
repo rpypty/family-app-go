@@ -609,7 +609,6 @@ func (h *Handlers) ListExercises(w http.ResponseWriter, r *http.Request) {
 
 type gymEntryResponse struct {
 	ID        string    `json:"id"`
-	FamilyID  string    `json:"family_id"`
 	UserID    string    `json:"user_id"`
 	Date      string    `json:"date"`
 	Exercise  string    `json:"exercise"`
@@ -633,7 +632,6 @@ type workoutSetResponse struct {
 
 type workoutResponse struct {
 	ID        string               `json:"id"`
-	FamilyID  string               `json:"family_id"`
 	UserID    string               `json:"user_id"`
 	Date      string               `json:"date"`
 	Name      string               `json:"name"`
@@ -656,7 +654,6 @@ type templateExerciseResponse struct {
 
 type templateResponse struct {
 	ID        string                     `json:"id"`
-	FamilyID  string                     `json:"family_id"`
 	UserID    string                     `json:"user_id"`
 	Name      string                     `json:"name"`
 	Exercises []templateExerciseResponse `json:"exercises"`
@@ -677,7 +674,6 @@ type exerciseListResponse struct {
 func toGymEntryResponse(entry gymdomain.GymEntry) gymEntryResponse {
 	return gymEntryResponse{
 		ID:        entry.ID,
-		FamilyID:  entry.FamilyID,
 		UserID:    entry.UserID,
 		Date:      entry.Date.Format("2006-01-02"),
 		Exercise:  entry.Exercise,
@@ -701,7 +697,6 @@ func toWorkoutResponse(workout gymdomain.WorkoutWithSets) workoutResponse {
 
 	return workoutResponse{
 		ID:        workout.ID,
-		FamilyID:  workout.FamilyID,
 		UserID:    workout.UserID,
 		Date:      workout.Date.Format("2006-01-02"),
 		Name:      workout.Name,
@@ -724,7 +719,6 @@ func toTemplateResponse(template gymdomain.TemplateWithExercises) templateRespon
 
 	return templateResponse{
 		ID:        template.ID,
-		FamilyID:  template.FamilyID,
 		UserID:    template.UserID,
 		Name:      template.Name,
 		Exercises: exercises,

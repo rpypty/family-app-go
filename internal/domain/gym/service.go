@@ -34,7 +34,6 @@ func (s *Service) CreateGymEntry(ctx context.Context, input CreateGymEntryInput)
 
 	entry := GymEntry{
 		ID:       entryID,
-		FamilyID: input.FamilyID,
 		UserID:   input.UserID,
 		Date:     input.Date,
 		Exercise: strings.TrimSpace(input.Exercise),
@@ -144,11 +143,10 @@ func (s *Service) CreateWorkout(ctx context.Context, input CreateWorkoutInput) (
 	}
 
 	workout := Workout{
-		ID:       workoutID,
-		FamilyID: input.FamilyID,
-		UserID:   input.UserID,
-		Date:     input.Date,
-		Name:     strings.TrimSpace(input.Name),
+		ID:     workoutID,
+		UserID: input.UserID,
+		Date:   input.Date,
+		Name:   strings.TrimSpace(input.Name),
 	}
 
 	sets := make([]WorkoutSet, 0, len(input.Sets))
@@ -322,10 +320,9 @@ func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput)
 	}
 
 	template := WorkoutTemplate{
-		ID:       templateID,
-		FamilyID: input.FamilyID,
-		UserID:   input.UserID,
-		Name:     strings.TrimSpace(input.Name),
+		ID:     templateID,
+		UserID: input.UserID,
+		Name:   strings.TrimSpace(input.Name),
 	}
 
 	exercises := make([]TemplateExercise, 0, len(input.Exercises))
