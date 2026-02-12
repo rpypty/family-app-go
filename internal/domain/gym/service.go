@@ -18,8 +18,8 @@ func NewService(repo Repository) *Service {
 
 // GymEntry operations
 
-func (s *Service) ListGymEntries(ctx context.Context, familyID string, filter ListFilter) ([]GymEntry, int64, error) {
-	return s.repo.ListGymEntries(ctx, familyID, filter)
+func (s *Service) ListGymEntries(ctx context.Context, userID string, filter ListFilter) ([]GymEntry, int64, error) {
+	return s.repo.ListGymEntries(ctx, userID, filter)
 }
 
 func (s *Service) CreateGymEntry(ctx context.Context, input CreateGymEntryInput) (*GymEntry, error) {
@@ -54,7 +54,7 @@ func (s *Service) UpdateGymEntry(ctx context.Context, input UpdateGymEntryInput)
 		return nil, err
 	}
 
-	entry, err := s.repo.GetGymEntryByID(ctx, input.FamilyID, input.ID)
+	entry, err := s.repo.GetGymEntryByID(ctx, input.UserID, input.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -72,8 +72,8 @@ func (s *Service) UpdateGymEntry(ctx context.Context, input UpdateGymEntryInput)
 	return entry, nil
 }
 
-func (s *Service) DeleteGymEntry(ctx context.Context, familyID, entryID string) error {
-	deleted, err := s.repo.DeleteGymEntry(ctx, familyID, entryID)
+func (s *Service) DeleteGymEntry(ctx context.Context, userID, entryID string) error {
+	deleted, err := s.repo.DeleteGymEntry(ctx, userID, entryID)
 	if err != nil {
 		return err
 	}
@@ -85,8 +85,8 @@ func (s *Service) DeleteGymEntry(ctx context.Context, familyID, entryID string) 
 
 // Workout operations
 
-func (s *Service) ListWorkouts(ctx context.Context, familyID string, filter ListFilter) ([]WorkoutWithSets, int64, error) {
-	workouts, total, err := s.repo.ListWorkouts(ctx, familyID, filter)
+func (s *Service) ListWorkouts(ctx context.Context, userID string, filter ListFilter) ([]WorkoutWithSets, int64, error) {
+	workouts, total, err := s.repo.ListWorkouts(ctx, userID, filter)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -116,8 +116,8 @@ func (s *Service) ListWorkouts(ctx context.Context, familyID string, filter List
 	return items, total, nil
 }
 
-func (s *Service) GetWorkoutByID(ctx context.Context, familyID, workoutID string) (*WorkoutWithSets, error) {
-	workout, err := s.repo.GetWorkoutByID(ctx, familyID, workoutID)
+func (s *Service) GetWorkoutByID(ctx context.Context, userID, workoutID string) (*WorkoutWithSets, error) {
+	workout, err := s.repo.GetWorkoutByID(ctx, userID, workoutID)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +201,7 @@ func (s *Service) UpdateWorkout(ctx context.Context, input UpdateWorkoutInput) (
 	var updatedSets []WorkoutSet
 
 	err := s.repo.Transaction(ctx, func(tx Repository) error {
-		workout, err := tx.GetWorkoutByID(ctx, input.FamilyID, input.ID)
+		workout, err := tx.GetWorkoutByID(ctx, input.UserID, input.ID)
 		if err != nil {
 			return err
 		}
@@ -250,8 +250,8 @@ func (s *Service) UpdateWorkout(ctx context.Context, input UpdateWorkoutInput) (
 	return &WorkoutWithSets{Workout: updated, Sets: updatedSets}, nil
 }
 
-func (s *Service) DeleteWorkout(ctx context.Context, familyID, workoutID string) error {
-	deleted, err := s.repo.DeleteWorkout(ctx, familyID, workoutID)
+func (s *Service) DeleteWorkout(ctx context.Context, userID, workoutID string) error {
+	deleted, err := s.repo.DeleteWorkout(ctx, userID, workoutID)
 	if err != nil {
 		return err
 	}
@@ -263,8 +263,8 @@ func (s *Service) DeleteWorkout(ctx context.Context, familyID, workoutID string)
 
 // WorkoutTemplate operations
 
-func (s *Service) ListTemplates(ctx context.Context, familyID string) ([]TemplateWithExercises, error) {
-	templates, err := s.repo.ListTemplates(ctx, familyID)
+func (s *Service) ListTemplates(ctx context.Context, userID string) ([]TemplateWithExercises, error) {
+	templates, err := s.repo.ListTemplates(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -294,8 +294,8 @@ func (s *Service) ListTemplates(ctx context.Context, familyID string) ([]Templat
 	return items, nil
 }
 
-func (s *Service) GetTemplateByID(ctx context.Context, familyID, templateID string) (*TemplateWithExercises, error) {
-	template, err := s.repo.GetTemplateByID(ctx, familyID, templateID)
+func (s *Service) GetTemplateByID(ctx context.Context, userID, templateID string) (*TemplateWithExercises, error) {
+	template, err := s.repo.GetTemplateByID(ctx, userID, templateID)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +378,7 @@ func (s *Service) UpdateTemplate(ctx context.Context, input UpdateTemplateInput)
 	var updatedExercises []TemplateExercise
 
 	err := s.repo.Transaction(ctx, func(tx Repository) error {
-		template, err := tx.GetTemplateByID(ctx, input.FamilyID, input.ID)
+		template, err := tx.GetTemplateByID(ctx, input.UserID, input.ID)
 		if err != nil {
 			return err
 		}
@@ -426,8 +426,8 @@ func (s *Service) UpdateTemplate(ctx context.Context, input UpdateTemplateInput)
 	return &TemplateWithExercises{WorkoutTemplate: updated, Exercises: updatedExercises}, nil
 }
 
-func (s *Service) DeleteTemplate(ctx context.Context, familyID, templateID string) error {
-	deleted, err := s.repo.DeleteTemplate(ctx, familyID, templateID)
+func (s *Service) DeleteTemplate(ctx context.Context, userID, templateID string) error {
+	deleted, err := s.repo.DeleteTemplate(ctx, userID, templateID)
 	if err != nil {
 		return err
 	}
@@ -439,8 +439,8 @@ func (s *Service) DeleteTemplate(ctx context.Context, familyID, templateID strin
 
 // Exercise list
 
-func (s *Service) ListExercises(ctx context.Context, familyID string) ([]string, error) {
-	return s.repo.ListExercises(ctx, familyID)
+func (s *Service) ListExercises(ctx context.Context, userID string) ([]string, error) {
+	return s.repo.ListExercises(ctx, userID)
 }
 
 // Validation helpers
