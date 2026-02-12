@@ -95,6 +95,16 @@ func (h *Handlers) CreateGymEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
+	if err != nil {
+		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+
 	date, err := parseDateRequired(req.Date)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid date")
@@ -139,16 +149,6 @@ func (h *Handlers) UpdateGymEntry(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
-		return
-	}
-
-	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
-	if err != nil {
-		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -322,6 +322,16 @@ func (h *Handlers) CreateWorkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
+	if err != nil {
+		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+
 	date, err := parseDateRequired(req.Date)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid date")
@@ -377,16 +387,6 @@ func (h *Handlers) UpdateWorkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
-	if err != nil {
-		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
-		return
-	}
-
 	date, err := parseDateRequired(req.Date)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid date")
@@ -437,6 +437,16 @@ func (h *Handlers) DeleteWorkout(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
+		return
+	}
+
+	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
+	if err != nil {
+		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -550,16 +560,6 @@ func (h *Handlers) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
-		return
-	}
-
-	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
-	if err != nil {
-		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
