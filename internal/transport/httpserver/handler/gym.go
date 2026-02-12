@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	familydomain "family-app-go/internal/domain/family"
 	gymdomain "family-app-go/internal/domain/gym"
 	"family-app-go/internal/transport/httpserver/middleware"
 	"github.com/go-chi/chi/v5"
@@ -106,7 +105,6 @@ func (h *Handlers) CreateGymEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := gymdomain.CreateGymEntryInput{
-		FamilyID: family.ID,
 		UserID:   user.ID,
 		Date:     date,
 		Exercise: req.Exercise,
@@ -139,16 +137,6 @@ func (h *Handlers) UpdateGymEntry(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
-		return
-	}
-
-	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
-	if err != nil {
-		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -342,11 +330,10 @@ func (h *Handlers) CreateWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := gymdomain.CreateWorkoutInput{
-		FamilyID: family.ID,
-		UserID:   user.ID,
-		Date:     date,
-		Name:     req.Name,
-		Sets:     sets,
+		UserID: user.ID,
+		Date:   date,
+		Name:   req.Name,
+		Sets:   sets,
 	}
 
 	created, err := h.Gym.CreateWorkout(r.Context(), input)
@@ -374,16 +361,6 @@ func (h *Handlers) UpdateWorkout(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
-		return
-	}
-
-	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
-	if err != nil {
-		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -439,7 +416,6 @@ func (h *Handlers) DeleteWorkout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
 		return
 	}
-
 	if err := h.Gym.DeleteWorkout(r.Context(), user.ID, workoutID); err != nil {
 		if errors.Is(err, gymdomain.ErrWorkoutNotFound) {
 			writeError(w, http.StatusNotFound, "workout_not_found", "workout not found")
@@ -519,7 +495,6 @@ func (h *Handlers) CreateTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := gymdomain.CreateTemplateInput{
-		FamilyID:  family.ID,
 		UserID:    user.ID,
 		Name:      req.Name,
 		Exercises: exercises,
@@ -550,16 +525,6 @@ func (h *Handlers) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
-		return
-	}
-
-	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
-	if err != nil {
-		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
