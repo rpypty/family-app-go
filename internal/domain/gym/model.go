@@ -5,7 +5,6 @@ import "time"
 // GymEntry represents a single set in a workout
 type GymEntry struct {
 	ID        string    `gorm:"type:uuid;primaryKey"`
-	FamilyID  string    `gorm:"type:uuid;index;not null"`
 	UserID    string    `gorm:"type:uuid;index;not null"`
 	Date      time.Time `gorm:"type:date;not null"`
 	Exercise  string    `gorm:"not null"`
@@ -18,7 +17,6 @@ type GymEntry struct {
 // Workout represents a collection of sets grouped together
 type Workout struct {
 	ID        string    `gorm:"type:uuid;primaryKey"`
-	FamilyID  string    `gorm:"type:uuid;index;not null"`
 	UserID    string    `gorm:"type:uuid;index;not null"`
 	Date      time.Time `gorm:"type:date;not null"`
 	Name      string    `gorm:"not null"`
@@ -41,7 +39,6 @@ type WorkoutSet struct {
 // WorkoutTemplate represents a reusable workout template
 type WorkoutTemplate struct {
 	ID        string    `gorm:"type:uuid;primaryKey"`
-	FamilyID  string    `gorm:"type:uuid;index;not null"`
 	UserID    string    `gorm:"type:uuid;index;not null"`
 	Name      string    `gorm:"not null"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
@@ -81,7 +78,6 @@ type ListFilter struct {
 
 // CreateGymEntryInput represents input for creating a gym entry
 type CreateGymEntryInput struct {
-	FamilyID string
 	UserID   string
 	Date     time.Time
 	Exercise string
@@ -101,11 +97,10 @@ type UpdateGymEntryInput struct {
 
 // CreateWorkoutInput represents input for creating a workout
 type CreateWorkoutInput struct {
-	FamilyID string
-	UserID   string
-	Date     time.Time
-	Name     string
-	Sets     []CreateWorkoutSetInput
+	UserID string
+	Date   time.Time
+	Name   string
+	Sets   []CreateWorkoutSetInput
 }
 
 // CreateWorkoutSetInput represents input for creating a workout set
@@ -126,7 +121,6 @@ type UpdateWorkoutInput struct {
 
 // CreateTemplateInput represents input for creating a workout template
 type CreateTemplateInput struct {
-	FamilyID  string
 	UserID    string
 	Name      string
 	Exercises []CreateTemplateExerciseInput
