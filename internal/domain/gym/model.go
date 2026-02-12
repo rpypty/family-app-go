@@ -92,7 +92,7 @@ type CreateGymEntryInput struct {
 // UpdateGymEntryInput represents input for updating a gym entry
 type UpdateGymEntryInput struct {
 	ID       string
-	FamilyID string
+	UserID   string
 	Date     time.Time
 	Exercise string
 	WeightKg float64
@@ -117,11 +117,11 @@ type CreateWorkoutSetInput struct {
 
 // UpdateWorkoutInput represents input for updating a workout
 type UpdateWorkoutInput struct {
-	ID       string
-	FamilyID string
-	Date     time.Time
-	Name     string
-	Sets     []CreateWorkoutSetInput
+	ID     string
+	UserID string
+	Date   time.Time
+	Name   string
+	Sets   []CreateWorkoutSetInput
 }
 
 // CreateTemplateInput represents input for creating a workout template
@@ -142,7 +142,7 @@ type CreateTemplateExerciseInput struct {
 // UpdateTemplateInput represents input for updating a workout template
 type UpdateTemplateInput struct {
 	ID        string
-	FamilyID  string
+	UserID    string
 	Name      string
 	Exercises []CreateTemplateExerciseInput
 }
