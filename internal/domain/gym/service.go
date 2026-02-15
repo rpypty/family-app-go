@@ -261,14 +261,14 @@ func (s *Service) DeleteWorkout(ctx context.Context, userID, workoutID string) e
 
 // WorkoutTemplate operations
 
-func (s *Service) ListTemplates(ctx context.Context, userID string) ([]TemplateWithExercises, error) {
+func (s *Service) ListTemplates(ctx context.Context, userID string) ([]TemplateWithSets, error) {
 	templates, err := s.repo.ListTemplates(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(templates) == 0 {
-		return []TemplateWithExercises{}, nil
+		return []TemplateWithSets{}, nil
 	}
 
 	templateIDs := make([]string, 0, len(templates))
@@ -276,40 +276,40 @@ func (s *Service) ListTemplates(ctx context.Context, userID string) ([]TemplateW
 		templateIDs = append(templateIDs, template.ID)
 	}
 
-	exercisesByTemplate, err := s.repo.GetExercisesByTemplateIDs(ctx, templateIDs)
+	setsByTemplate, err := s.repo.GetSetsByTemplateIDs(ctx, templateIDs)
 	if err != nil {
 		return nil, err
 	}
 
-	items := make([]TemplateWithExercises, 0, len(templates))
+	items := make([]TemplateWithSets, 0, len(templates))
 	for _, template := range templates {
-		items = append(items, TemplateWithExercises{
+		items = append(items, TemplateWithSets{
 			WorkoutTemplate: template,
-			Exercises:       exercisesByTemplate[template.ID],
+			Sets:            setsByTemplate[template.ID],
 		})
 	}
 
 	return items, nil
 }
 
-func (s *Service) GetTemplateByID(ctx context.Context, userID, templateID string) (*TemplateWithExercises, error) {
+func (s *Service) GetTemplateByID(ctx context.Context, userID, templateID string) (*TemplateWithSets, error) {
 	template, err := s.repo.GetTemplateByID(ctx, userID, templateID)
 	if err != nil {
 		return nil, err
 	}
 
-	exercisesByTemplate, err := s.repo.GetExercisesByTemplateIDs(ctx, []string{templateID})
+	setsByTemplate, err := s.repo.GetSetsByTemplateIDs(ctx, []string{templateID})
 	if err != nil {
 		return nil, err
 	}
 
-	return &TemplateWithExercises{
+	return &TemplateWithSets{
 		WorkoutTemplate: *template,
-		Exercises:       exercisesByTemplate[templateID],
+		Sets:            setsByTemplate[templateID],
 	}, nil
 }
 
-func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput) (*TemplateWithExercises, error) {
+func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput) (*TemplateWithSets, error) {
 	if err := s.validateTemplateName(input.Name); err != nil {
 		return nil, err
 	}
@@ -325,25 +325,24 @@ func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput)
 		Name:   strings.TrimSpace(input.Name),
 	}
 
-	exercises := make([]TemplateExercise, 0, len(input.Exercises))
-	for i, exerciseInput := range input.Exercises {
-		if err := s.validateGymEntryInput(exerciseInput.Name); err != nil {
+	sets := make([]TemplateSet, 0, len(input.Sets))
+	for i, setInput := range input.Sets {
+		if err := s.validateGymEntryInput(setInput.Exercise); err != nil {
 			return nil, err
 		}
 
-		exerciseID, err := newUUID()
+		setID, err := newUUID()
 		if err != nil {
 			return nil, err
 		}
 
-		exercises = append(exercises, TemplateExercise{
-			ID:            exerciseID,
-			TemplateID:    templateID,
-			Name:          strings.TrimSpace(exerciseInput.Name),
-			Reps:          exerciseInput.Reps,
-			Sets:          exerciseInput.Sets,
-			Weight:        exerciseInput.Weight,
-			ExerciseOrder: i,
+		sets = append(sets, TemplateSet{
+			ID:         setID,
+			TemplateID: templateID,
+			Exercise:   strings.TrimSpace(setInput.Exercise),
+			WeightKg:   setInput.WeightKg,
+			Reps:       setInput.Reps,
+			SetOrder:   i,
 		})
 	}
 
@@ -352,8 +351,8 @@ func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput)
 			return err
 		}
 
-		if len(exercises) > 0 {
-			if err := tx.ReplaceTemplateExercises(ctx, template.ID, exercises); err != nil {
+		if len(sets) > 0 {
+			if err := tx.ReplaceTemplateSets(ctx, template.ID, sets); err != nil {
 				return err
 			}
 		}
@@ -364,16 +363,16 @@ func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput)
 		return nil, err
 	}
 
-	return &TemplateWithExercises{WorkoutTemplate: template, Exercises: exercises}, nil
+	return &TemplateWithSets{WorkoutTemplate: template, Sets: sets}, nil
 }
 
-func (s *Service) UpdateTemplate(ctx context.Context, input UpdateTemplateInput) (*TemplateWithExercises, error) {
+func (s *Service) UpdateTemplate(ctx context.Context, input UpdateTemplateInput) (*TemplateWithSets, error) {
 	if err := s.validateTemplateName(input.Name); err != nil {
 		return nil, err
 	}
 
 	var updated WorkoutTemplate
-	var updatedExercises []TemplateExercise
+	var updatedSets []TemplateSet
 
 	err := s.repo.Transaction(ctx, func(tx Repository) error {
 		template, err := tx.GetTemplateByID(ctx, input.UserID, input.ID)
@@ -388,41 +387,40 @@ func (s *Service) UpdateTemplate(ctx context.Context, input UpdateTemplateInput)
 			return err
 		}
 
-		exercises := make([]TemplateExercise, 0, len(input.Exercises))
-		for i, exerciseInput := range input.Exercises {
-			if err := s.validateGymEntryInput(exerciseInput.Name); err != nil {
+		sets := make([]TemplateSet, 0, len(input.Sets))
+		for i, setInput := range input.Sets {
+			if err := s.validateGymEntryInput(setInput.Exercise); err != nil {
 				return err
 			}
 
-			exerciseID, err := newUUID()
+			setID, err := newUUID()
 			if err != nil {
 				return err
 			}
 
-			exercises = append(exercises, TemplateExercise{
-				ID:            exerciseID,
-				TemplateID:    template.ID,
-				Name:          strings.TrimSpace(exerciseInput.Name),
-				Reps:          exerciseInput.Reps,
-				Sets:          exerciseInput.Sets,
-				Weight:        exerciseInput.Weight,
-				ExerciseOrder: i,
+			sets = append(sets, TemplateSet{
+				ID:         setID,
+				TemplateID: template.ID,
+				Exercise:   strings.TrimSpace(setInput.Exercise),
+				WeightKg:   setInput.WeightKg,
+				Reps:       setInput.Reps,
+				SetOrder:   i,
 			})
 		}
 
-		if err := tx.ReplaceTemplateExercises(ctx, template.ID, exercises); err != nil {
+		if err := tx.ReplaceTemplateSets(ctx, template.ID, sets); err != nil {
 			return err
 		}
 
 		updated = *template
-		updatedExercises = exercises
+		updatedSets = sets
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &TemplateWithExercises{WorkoutTemplate: updated, Exercises: updatedExercises}, nil
+	return &TemplateWithSets{WorkoutTemplate: updated, Sets: updatedSets}, nil
 }
 
 func (s *Service) DeleteTemplate(ctx context.Context, userID, templateID string) error {

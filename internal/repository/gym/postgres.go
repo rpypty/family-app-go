@@ -238,37 +238,37 @@ func (r *PostgresRepository) DeleteTemplate(ctx context.Context, userID, templat
 
 // TemplateExercise operations
 
-func (r *PostgresRepository) GetExercisesByTemplateIDs(ctx context.Context, templateIDs []string) (map[string][]gymdomain.TemplateExercise, error) {
-	result := make(map[string][]gymdomain.TemplateExercise, len(templateIDs))
+func (r *PostgresRepository) GetSetsByTemplateIDs(ctx context.Context, templateIDs []string) (map[string][]gymdomain.TemplateSet, error) {
+	result := make(map[string][]gymdomain.TemplateSet, len(templateIDs))
 	if len(templateIDs) == 0 {
 		return result, nil
 	}
 
-	var exercises []gymdomain.TemplateExercise
+	var sets []gymdomain.TemplateSet
 	if err := r.db.WithContext(ctx).
 		Where("template_id IN ?", templateIDs).
-		Order("exercise_order asc").
-		Find(&exercises).Error; err != nil {
+		Order("set_order asc").
+		Find(&sets).Error; err != nil {
 		return nil, err
 	}
 
-	for _, exercise := range exercises {
-		result[exercise.TemplateID] = append(result[exercise.TemplateID], exercise)
+	for _, set := range sets {
+		result[set.TemplateID] = append(result[set.TemplateID], set)
 	}
 
 	return result, nil
 }
 
-func (r *PostgresRepository) ReplaceTemplateExercises(ctx context.Context, templateID string, exercises []gymdomain.TemplateExercise) error {
-	if err := r.db.WithContext(ctx).Where("template_id = ?", templateID).Delete(&gymdomain.TemplateExercise{}).Error; err != nil {
+func (r *PostgresRepository) ReplaceTemplateSets(ctx context.Context, templateID string, sets []gymdomain.TemplateSet) error {
+	if err := r.db.WithContext(ctx).Where("template_id = ?", templateID).Delete(&gymdomain.TemplateSet{}).Error; err != nil {
 		return err
 	}
 
-	if len(exercises) == 0 {
+	if len(sets) == 0 {
 		return nil
 	}
 
-	return r.db.WithContext(ctx).Create(&exercises).Error
+	return r.db.WithContext(ctx).Create(&sets).Error
 }
 
 // Exercise list
