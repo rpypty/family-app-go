@@ -30,9 +30,9 @@ type Repository interface {
 	UpdateTemplate(ctx context.Context, template *WorkoutTemplate) error
 	DeleteTemplate(ctx context.Context, userID, templateID string) (bool, error)
 
-	// TemplateExercise operations
-	GetExercisesByTemplateIDs(ctx context.Context, templateIDs []string) (map[string][]TemplateExercise, error)
-	ReplaceTemplateExercises(ctx context.Context, templateID string, exercises []TemplateExercise) error
+	// TemplateSet operations
+	GetSetsByTemplateIDs(ctx context.Context, templateIDs []string) (map[string][]TemplateSet, error)
+	ReplaceTemplateSets(ctx context.Context, templateID string, sets []TemplateSet) error
 
 	// Exercise list
 	ListExercises(ctx context.Context, userID string) ([]string, error)

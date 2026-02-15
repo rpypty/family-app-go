@@ -45,16 +45,15 @@ type WorkoutTemplate struct {
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }
 
-// TemplateExercise represents an exercise in a workout template
-type TemplateExercise struct {
-	ID            string    `gorm:"type:uuid;primaryKey"`
-	TemplateID    string    `gorm:"type:uuid;index;not null"`
-	Name          string    `gorm:"not null"`
-	Reps          int       `gorm:"not null"`
-	Sets          int       `gorm:"not null"`
-	Weight        float64   `gorm:"type:numeric(8,2);default:0"`
-	ExerciseOrder int       `gorm:"not null;default:0"`
-	CreatedAt     time.Time `gorm:"autoCreateTime"`
+// TemplateSet represents a single set within a workout template (similar to WorkoutSet)
+type TemplateSet struct {
+	ID         string    `gorm:"type:uuid;primaryKey"`
+	TemplateID string    `gorm:"type:uuid;index;not null"`
+	Exercise   string    `gorm:"not null"`
+	WeightKg   float64   `gorm:"type:numeric(8,2);not null"`
+	Reps       int       `gorm:"not null"`
+	SetOrder   int       `gorm:"not null;default:0"`
+	CreatedAt  time.Time `gorm:"autoCreateTime"`
 }
 
 // WorkoutWithSets combines Workout with its WorkoutSets
@@ -63,10 +62,10 @@ type WorkoutWithSets struct {
 	Sets []WorkoutSet
 }
 
-// TemplateWithExercises combines WorkoutTemplate with its exercises
-type TemplateWithExercises struct {
+// TemplateWithSets combines WorkoutTemplate with its sets
+type TemplateWithSets struct {
 	WorkoutTemplate
-	Exercises []TemplateExercise
+	Sets []TemplateSet
 }
 
 // ListFilter defines filtering options for listing gym entries/workouts
@@ -122,23 +121,22 @@ type UpdateWorkoutInput struct {
 
 // CreateTemplateInput represents input for creating a workout template
 type CreateTemplateInput struct {
-	UserID    string
-	Name      string
-	Exercises []CreateTemplateExerciseInput
+	UserID string
+	Name   string
+	Sets   []CreateTemplateSetInput
 }
 
-// CreateTemplateExerciseInput represents input for creating a template exercise
-type CreateTemplateExerciseInput struct {
-	Name   string
-	Reps   int
-	Sets   int
-	Weight float64
+// CreateTemplateSetInput represents input for creating a template set
+type CreateTemplateSetInput struct {
+	Exercise string
+	WeightKg float64
+	Reps     int
 }
 
 // UpdateTemplateInput represents input for updating a workout template
 type UpdateTemplateInput struct {
-	ID        string
-	UserID    string
-	Name      string
-	Exercises []CreateTemplateExerciseInput
+	ID     string
+	UserID string
+	Name   string
+	Sets   []CreateTemplateSetInput
 }

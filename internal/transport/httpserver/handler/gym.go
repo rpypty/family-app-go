@@ -430,21 +430,20 @@ func (h *Handlers) DeleteWorkout(w http.ResponseWriter, r *http.Request) {
 
 // WorkoutTemplate handlers
 
-type createTemplateExerciseRequest struct {
-	Name   string  `json:"name"`
-	Reps   int     `json:"reps"`
-	Sets   int     `json:"sets"`
-	Weight float64 `json:"weight"`
+type createTemplateSetRequest struct {
+	Exercise string  `json:"exercise"`
+	WeightKg float64 `json:"weight_kg"`
+	Reps     int     `json:"reps"`
 }
 
 type createTemplateRequest struct {
-	Name      string                          `json:"name"`
-	Exercises []createTemplateExerciseRequest `json:"exercises"`
+	Name string                     `json:"name"`
+	Sets []createTemplateSetRequest `json:"sets"`
 }
 
 type updateTemplateRequest struct {
-	Name      string                          `json:"name"`
-	Exercises []createTemplateExerciseRequest `json:"exercises"`
+	Name string                     `json:"name"`
+	Sets []createTemplateSetRequest `json:"sets"`
 }
 
 func (h *Handlers) ListTemplates(w http.ResponseWriter, r *http.Request) {
@@ -486,20 +485,19 @@ func (h *Handlers) CreateTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exercises := make([]gymdomain.CreateTemplateExerciseInput, 0, len(req.Exercises))
-	for _, exReq := range req.Exercises {
-		exercises = append(exercises, gymdomain.CreateTemplateExerciseInput{
-			Name:   exReq.Name,
-			Reps:   exReq.Reps,
-			Sets:   exReq.Sets,
-			Weight: exReq.Weight,
+	sets := make([]gymdomain.CreateTemplateSetInput, 0, len(req.Sets))
+	for _, setReq := range req.Sets {
+		sets = append(sets, gymdomain.CreateTemplateSetInput{
+			Exercise: setReq.Exercise,
+			WeightKg: setReq.WeightKg,
+			Reps:     setReq.Reps,
 		})
 	}
 
 	input := gymdomain.CreateTemplateInput{
-		UserID:    user.ID,
-		Name:      req.Name,
-		Exercises: exercises,
+		UserID: user.ID,
+		Name:   req.Name,
+		Sets:   sets,
 	}
 
 	created, err := h.Gym.CreateTemplate(r.Context(), input)
@@ -535,21 +533,20 @@ func (h *Handlers) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exercises := make([]gymdomain.CreateTemplateExerciseInput, 0, len(req.Exercises))
-	for _, exReq := range req.Exercises {
-		exercises = append(exercises, gymdomain.CreateTemplateExerciseInput{
-			Name:   exReq.Name,
-			Reps:   exReq.Reps,
-			Sets:   exReq.Sets,
-			Weight: exReq.Weight,
+	sets := make([]gymdomain.CreateTemplateSetInput, 0, len(req.Sets))
+	for _, setReq := range req.Sets {
+		sets = append(sets, gymdomain.CreateTemplateSetInput{
+			Exercise: setReq.Exercise,
+			WeightKg: setReq.WeightKg,
+			Reps:     setReq.Reps,
 		})
 	}
 
 	input := gymdomain.UpdateTemplateInput{
-		ID:        templateID,
-		UserID:    user.ID,
-		Name:      req.Name,
-		Exercises: exercises,
+		ID:     templateID,
+		UserID: user.ID,
+		Name:   req.Name,
+		Sets:   sets,
 	}
 
 	updated, err := h.Gym.UpdateTemplate(r.Context(), input)
@@ -648,21 +645,20 @@ type workoutListResponse struct {
 	Total int64             `json:"total"`
 }
 
-type templateExerciseResponse struct {
-	ID     string  `json:"id"`
-	Name   string  `json:"name"`
-	Reps   int     `json:"reps"`
-	Sets   int     `json:"sets"`
-	Weight float64 `json:"weight"`
+type templateSetResponse struct {
+	ID       string  `json:"id"`
+	Exercise string  `json:"exercise"`
+	WeightKg float64 `json:"weight_kg"`
+	Reps     int     `json:"reps"`
 }
 
 type templateResponse struct {
-	ID        string                     `json:"id"`
-	UserID    string                     `json:"user_id"`
-	Name      string                     `json:"name"`
-	Exercises []templateExerciseResponse `json:"exercises"`
-	CreatedAt time.Time                  `json:"created_at"`
-	UpdatedAt time.Time                  `json:"updated_at"`
+	ID        string                `json:"id"`
+	UserID    string                `json:"user_id"`
+	Name      string                `json:"name"`
+	Sets      []templateSetResponse `json:"sets"`
+	CreatedAt time.Time             `json:"created_at"`
+	UpdatedAt time.Time             `json:"updated_at"`
 }
 
 type templateListResponse struct {
@@ -710,15 +706,14 @@ func toWorkoutResponse(workout gymdomain.WorkoutWithSets) workoutResponse {
 	}
 }
 
-func toTemplateResponse(template gymdomain.TemplateWithExercises) templateResponse {
-	exercises := make([]templateExerciseResponse, 0, len(template.Exercises))
-	for _, ex := range template.Exercises {
-		exercises = append(exercises, templateExerciseResponse{
-			ID:     ex.ID,
-			Name:   ex.Name,
-			Reps:   ex.Reps,
-			Sets:   ex.Sets,
-			Weight: ex.Weight,
+func toTemplateResponse(template gymdomain.TemplateWithSets) templateResponse {
+	sets := make([]templateSetResponse, 0, len(template.Sets))
+	for _, set := range template.Sets {
+		sets = append(sets, templateSetResponse{
+			ID:       set.ID,
+			Exercise: set.Exercise,
+			WeightKg: set.WeightKg,
+			Reps:     set.Reps,
 		})
 	}
 
@@ -726,7 +721,7 @@ func toTemplateResponse(template gymdomain.TemplateWithExercises) templateRespon
 		ID:        template.ID,
 		UserID:    template.UserID,
 		Name:      template.Name,
-		Exercises: exercises,
+		Sets:      sets,
 		CreatedAt: template.CreatedAt,
 		UpdatedAt: template.UpdatedAt,
 	}
