@@ -431,9 +431,10 @@ func (h *Handlers) DeleteWorkout(w http.ResponseWriter, r *http.Request) {
 // WorkoutTemplate handlers
 
 type createTemplateExerciseRequest struct {
-	Name string `json:"name"`
-	Reps int    `json:"reps"`
-	Sets int    `json:"sets"`
+	Name   string  `json:"name"`
+	Reps   int     `json:"reps"`
+	Sets   int     `json:"sets"`
+	Weight float64 `json:"weight"`
 }
 
 type createTemplateRequest struct {
@@ -488,9 +489,10 @@ func (h *Handlers) CreateTemplate(w http.ResponseWriter, r *http.Request) {
 	exercises := make([]gymdomain.CreateTemplateExerciseInput, 0, len(req.Exercises))
 	for _, exReq := range req.Exercises {
 		exercises = append(exercises, gymdomain.CreateTemplateExerciseInput{
-			Name: exReq.Name,
-			Reps: exReq.Reps,
-			Sets: exReq.Sets,
+			Name:   exReq.Name,
+			Reps:   exReq.Reps,
+			Sets:   exReq.Sets,
+			Weight: exReq.Weight,
 		})
 	}
 
@@ -536,9 +538,10 @@ func (h *Handlers) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	exercises := make([]gymdomain.CreateTemplateExerciseInput, 0, len(req.Exercises))
 	for _, exReq := range req.Exercises {
 		exercises = append(exercises, gymdomain.CreateTemplateExerciseInput{
-			Name: exReq.Name,
-			Reps: exReq.Reps,
-			Sets: exReq.Sets,
+			Name:   exReq.Name,
+			Reps:   exReq.Reps,
+			Sets:   exReq.Sets,
+			Weight: exReq.Weight,
 		})
 	}
 
@@ -646,10 +649,11 @@ type workoutListResponse struct {
 }
 
 type templateExerciseResponse struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Reps int    `json:"reps"`
-	Sets int    `json:"sets"`
+	ID     string  `json:"id"`
+	Name   string  `json:"name"`
+	Reps   int     `json:"reps"`
+	Sets   int     `json:"sets"`
+	Weight float64 `json:"weight"`
 }
 
 type templateResponse struct {
@@ -710,10 +714,11 @@ func toTemplateResponse(template gymdomain.TemplateWithExercises) templateRespon
 	exercises := make([]templateExerciseResponse, 0, len(template.Exercises))
 	for _, ex := range template.Exercises {
 		exercises = append(exercises, templateExerciseResponse{
-			ID:   ex.ID,
-			Name: ex.Name,
-			Reps: ex.Reps,
-			Sets: ex.Sets,
+			ID:     ex.ID,
+			Name:   ex.Name,
+			Reps:   ex.Reps,
+			Sets:   ex.Sets,
+			Weight: ex.Weight,
 		})
 	}
 

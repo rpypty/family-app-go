@@ -342,6 +342,7 @@ func (s *Service) CreateTemplate(ctx context.Context, input CreateTemplateInput)
 			Name:          strings.TrimSpace(exerciseInput.Name),
 			Reps:          exerciseInput.Reps,
 			Sets:          exerciseInput.Sets,
+			Weight:        exerciseInput.Weight,
 			ExerciseOrder: i,
 		})
 	}
@@ -404,6 +405,7 @@ func (s *Service) UpdateTemplate(ctx context.Context, input UpdateTemplateInput)
 				Name:          strings.TrimSpace(exerciseInput.Name),
 				Reps:          exerciseInput.Reps,
 				Sets:          exerciseInput.Sets,
+				Weight:        exerciseInput.Weight,
 				ExerciseOrder: i,
 			})
 		}

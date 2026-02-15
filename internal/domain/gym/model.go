@@ -52,6 +52,7 @@ type TemplateExercise struct {
 	Name          string    `gorm:"not null"`
 	Reps          int       `gorm:"not null"`
 	Sets          int       `gorm:"not null"`
+	Weight        float64   `gorm:"type:numeric(8,2);default:0"`
 	ExerciseOrder int       `gorm:"not null;default:0"`
 	CreatedAt     time.Time `gorm:"autoCreateTime"`
 }
@@ -128,9 +129,10 @@ type CreateTemplateInput struct {
 
 // CreateTemplateExerciseInput represents input for creating a template exercise
 type CreateTemplateExerciseInput struct {
-	Name string
-	Reps int
-	Sets int
+	Name   string
+	Reps   int
+	Sets   int
+	Weight float64
 }
 
 // UpdateTemplateInput represents input for updating a workout template
