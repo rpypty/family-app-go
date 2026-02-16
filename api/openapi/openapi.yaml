@@ -708,6 +708,289 @@ paths:
           description: No Content
         '404':
           $ref: '#/components/responses/TodoItemNotFound'
+  /gym/entries:
+    get:
+      summary: List gym entries
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 100
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GymEntryList'
+    post:
+      summary: Create gym entry
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGymEntryRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GymEntry'
+  /gym/entries/{id}:
+    put:
+      summary: Update gym entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGymEntryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GymEntry'
+        '404':
+          $ref: '#/components/responses/GymEntryNotFound'
+    delete:
+      summary: Delete gym entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/GymEntryNotFound'
+  /gym/workouts:
+    get:
+      summary: List workouts
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 100
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutList'
+    post:
+      summary: Create workout
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkoutRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+  /gym/workouts/{id}:
+    get:
+      summary: Get workout
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+        '404':
+          $ref: '#/components/responses/WorkoutNotFound'
+    put:
+      summary: Update workout
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkoutRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+        '404':
+          $ref: '#/components/responses/WorkoutNotFound'
+    delete:
+      summary: Delete workout
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/WorkoutNotFound'
+  /gym/templates:
+    get:
+      summary: List templates
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateList'
+    post:
+      summary: Create template
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+  /gym/templates/{id}:
+    put:
+      summary: Update template
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTemplateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+        '404':
+          $ref: '#/components/responses/TemplateNotFound'
+    delete:
+      summary: Delete template
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/TemplateNotFound'
+  /gym/exercises:
+    get:
+      summary: List exercises
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseList'
 components:
   securitySchemes:
     bearerAuth:
@@ -835,6 +1118,36 @@ components:
             error:
               code: tag_name_taken
               message: Tag name already exists
+    GymEntryNotFound:
+      description: Gym entry not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: gym_entry_not_found
+              message: Gym entry not found
+    WorkoutNotFound:
+      description: Workout not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: workout_not_found
+              message: Workout not found
+    TemplateNotFound:
+      description: Template not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: template_not_found
+              message: Template not found
   schemas:
     ErrorResponse:
       type: object
@@ -1039,6 +1352,132 @@ components:
             $ref: '#/components/schemas/TodoItem'
         total:
           type: integer
+    GymEntry:
+      type: object
+      required: [id, user_id, date, exercise, weight_kg, reps, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        date:
+          type: string
+          format: date
+        exercise:
+          type: string
+        weight_kg:
+          type: number
+        reps:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    GymEntryList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GymEntry'
+        total:
+          type: integer
+    WorkoutSet:
+      type: object
+      required: [id, exercise, weight_kg, reps]
+      properties:
+        id:
+          type: string
+        exercise:
+          type: string
+        weight_kg:
+          type: number
+        reps:
+          type: integer
+    Workout:
+      type: object
+      required: [id, user_id, date, name, sets, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        date:
+          type: string
+          format: date
+        name:
+          type: string
+        sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutSet'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WorkoutList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Workout'
+        total:
+          type: integer
+    TemplateExercise:
+      type: object
+      required: [id, name, reps, sets]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        reps:
+          type: integer
+        sets:
+          type: integer
+    Template:
+      type: object
+      required: [id, user_id, name, exercises, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        name:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateExercise'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    TemplateList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Template'
+    ExerciseList:
+      type: object
+      required: [exercises]
+      properties:
+        exercises:
+          type: array
+          items:
+            type: string
     AnalyticsSummary:
       type: object
       required: [total_amount, currency, count, avg_per_day, from, to]
@@ -1219,3 +1658,95 @@ components:
           type: string
         is_completed:
           type: boolean
+    CreateGymEntryRequest:
+      type: object
+      required: [date, exercise, weight_kg, reps]
+      properties:
+        date:
+          type: string
+          format: date
+        exercise:
+          type: string
+        weight_kg:
+          type: number
+        reps:
+          type: integer
+    UpdateGymEntryRequest:
+      type: object
+      required: [date, exercise, weight_kg, reps]
+      properties:
+        date:
+          type: string
+          format: date
+        exercise:
+          type: string
+        weight_kg:
+          type: number
+        reps:
+          type: integer
+    CreateWorkoutSetRequest:
+      type: object
+      required: [exercise, weight_kg, reps]
+      properties:
+        exercise:
+          type: string
+        weight_kg:
+          type: number
+        reps:
+          type: integer
+    CreateWorkoutRequest:
+      type: object
+      required: [date, name]
+      properties:
+        date:
+          type: string
+          format: date
+        name:
+          type: string
+        sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateWorkoutSetRequest'
+    UpdateWorkoutRequest:
+      type: object
+      required: [date, name]
+      properties:
+        date:
+          type: string
+          format: date
+        name:
+          type: string
+        sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateWorkoutSetRequest'
+    CreateTemplateExerciseRequest:
+      type: object
+      required: [name, reps, sets]
+      properties:
+        name:
+          type: string
+        reps:
+          type: integer
+        sets:
+          type: integer
+    CreateTemplateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateTemplateExerciseRequest'
+    UpdateTemplateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateTemplateExerciseRequest'
