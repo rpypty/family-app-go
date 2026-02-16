@@ -149,8 +149,33 @@ func (s *Service) CreateWorkout(ctx context.Context, input CreateWorkoutInput) (
 		Name:   strings.TrimSpace(input.Name),
 	}
 
-	sets := make([]WorkoutSet, 0, len(input.Sets))
-	for i, setInput := range input.Sets {
+	// If template_id is provided, load template sets
+	setsInput := input.Sets
+	if input.TemplateID != "" {
+		// Verify template exists and belongs to user
+		_, err := s.repo.GetTemplateByID(ctx, input.UserID, input.TemplateID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load template: %w", err)
+		}
+		// Load template sets
+		setsByTemplate, err := s.repo.GetSetsByTemplateIDs(ctx, []string{input.TemplateID})
+		if err != nil {
+			return nil, fmt.Errorf("failed to load template sets: %w", err)
+		}
+		templateSets := setsByTemplate[input.TemplateID]
+		// Convert template sets to workout set inputs
+		setsInput = make([]CreateWorkoutSetInput, 0, len(templateSets))
+		for _, ts := range templateSets {
+			setsInput = append(setsInput, CreateWorkoutSetInput{
+				Exercise: ts.Exercise,
+				WeightKg: ts.WeightKg,
+				Reps:     ts.Reps,
+			})
+		}
+	}
+
+	sets := make([]WorkoutSet, 0, len(setsInput))
+	for i, setInput := range setsInput {
 		if err := s.validateGymEntryInput(setInput.Exercise); err != nil {
 			return nil, err
 		}

@@ -97,10 +97,11 @@ type UpdateGymEntryInput struct {
 
 // CreateWorkoutInput represents input for creating a workout
 type CreateWorkoutInput struct {
-	UserID string
-	Date   time.Time
-	Name   string
-	Sets   []CreateWorkoutSetInput
+	UserID     string
+	Date       time.Time
+	Name       string
+	Sets       []CreateWorkoutSetInput
+	TemplateID string // Optional: if provided, copy sets from template
 }
 
 // CreateWorkoutSetInput represents input for creating a workout set

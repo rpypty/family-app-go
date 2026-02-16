@@ -206,9 +206,10 @@ type createWorkoutSetRequest struct {
 }
 
 type createWorkoutRequest struct {
-	Date string                    `json:"date"`
-	Name string                    `json:"name"`
-	Sets []createWorkoutSetRequest `json:"sets"`
+	Date       string                    `json:"date"`
+	Name       string                    `json:"name"`
+	Sets       []createWorkoutSetRequest `json:"sets"`
+	TemplateID string                    `json:"template_id"`
 }
 
 type updateWorkoutRequest struct {
@@ -330,10 +331,11 @@ func (h *Handlers) CreateWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := gymdomain.CreateWorkoutInput{
-		UserID: user.ID,
-		Date:   date,
-		Name:   req.Name,
-		Sets:   sets,
+		UserID:     user.ID,
+		Date:       date,
+		Name:       req.Name,
+		Sets:       sets,
+		TemplateID: strings.TrimSpace(req.TemplateID),
 	}
 
 	created, err := h.Gym.CreateWorkout(r.Context(), input)
