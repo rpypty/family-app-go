@@ -28,6 +28,9 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.Pr
 			r.Use(auth.Middleware)
 
 			r.Get("/auth/me", handlers.AuthMe)
+			if cfg.OfflineSyncEnabled {
+				r.Post("/sync", handlers.SyncBatch)
+			}
 
 			r.Get("/analytics/summary", handlers.AnalyticsSummary)
 			r.Get("/analytics/timeseries", handlers.AnalyticsTimeseries)

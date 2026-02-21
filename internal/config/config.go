@@ -7,10 +7,11 @@ import (
 )
 
 type Config struct {
-	HTTPPort string
-	Env      string
-	DB       DBConfig
-	Supabase SupabaseConfig
+	HTTPPort           string
+	Env                string
+	OfflineSyncEnabled bool
+	DB                 DBConfig
+	Supabase           SupabaseConfig
 }
 
 type DBConfig struct {
@@ -45,8 +46,9 @@ func Load() Config {
 	}
 
 	return Config{
-		HTTPPort: getEnv("HTTP_PORT", "8080"),
-		Env:      getEnv("ENV", "development"),
+		HTTPPort:           getEnv("HTTP_PORT", "8080"),
+		Env:                getEnv("ENV", "development"),
+		OfflineSyncEnabled: getEnvBool("OFFLINE_SYNC_ENABLED", true),
 		DB: DBConfig{
 			DSN:             getEnv("DB_DSN", ""),
 			Host:            getEnv("DB_HOST", "localhost"),

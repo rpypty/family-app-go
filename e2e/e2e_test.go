@@ -80,7 +80,7 @@ func setupE2E(t *testing.T) *testEnv {
 	userService := userdomain.NewService(userRepo)
 	todosRepo := todosrepo.NewPostgres(dbConn)
 	todosService := todosdomain.NewService(todosRepo)
-	handlers := handler.New(analyticsService, familyService, expensesService, todosService)
+	handlers := handler.New(analyticsService, familyService, expensesService, todosService, nil, nil)
 
 	router := httpserver.NewRouter(cfg, handlers, userService)
 	server := httptest.NewServer(router)
