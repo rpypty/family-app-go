@@ -10,12 +10,14 @@ import (
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
 	gymdomain "family-app-go/internal/domain/gym"
+	syncdomain "family-app-go/internal/domain/sync"
 	todosdomain "family-app-go/internal/domain/todos"
 	userdomain "family-app-go/internal/domain/user"
 	analyticsrepo "family-app-go/internal/repository/analytics"
 	expensesrepo "family-app-go/internal/repository/expenses"
 	familyrepo "family-app-go/internal/repository/family"
 	gymrepo "family-app-go/internal/repository/gym"
+	syncrepo "family-app-go/internal/repository/sync"
 	todosrepo "family-app-go/internal/repository/todos"
 	userrepo "family-app-go/internal/repository/user"
 	"family-app-go/internal/transport/httpserver"
@@ -55,9 +57,11 @@ func New() (*App, error) {
 	userService := userdomain.NewService(userRepo)
 	todosRepo := todosrepo.NewPostgres(dbConn)
 	todosService := todosdomain.NewService(todosRepo)
+	syncRepo := syncrepo.NewPostgres(dbConn)
+	syncService := syncdomain.NewService(syncRepo, expensesService, todosService)
 	gymRepo := gymrepo.NewPostgres(dbConn)
 	gymService := gymdomain.NewService(gymRepo)
-	handlers := handler.New(analyticsService, familyService, expensesService, todosService, gymService)
+	handlers := handler.New(analyticsService, familyService, expensesService, todosService, syncService, gymService)
 
 	log.Printf("app: initializing router")
 	router := httpserver.NewRouter(cfg, handlers, userService)

@@ -30,6 +30,48 @@ paths:
                 $ref: '#/components/schemas/AuthMeResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /sync:
+    post:
+      summary: Sync offline operations
+      description: |
+        Applies offline operations in request order.
+        Idempotency is supported by `operation_id` (per operation) and optional `Idempotency-Key` (per batch request).
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+          description: |
+            Optional key for replaying the same full batch.
+            Reusing the same key with a different payload returns `409`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncBatchRequest'
+      responses:
+        '200':
+          description: Batch processed (success, partial success, or all failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncBatchResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/FamilyNotFound'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '413':
+          $ref: '#/components/responses/SyncBatchTooLarge'
   /analytics/summary:
     get:
       summary: Analytics summary
@@ -998,6 +1040,16 @@ components:
       scheme: bearer
       bearerFormat: JWT
   responses:
+    InvalidRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: invalid_request
+              message: Invalid request
     Unauthorized:
       description: Unauthorized
       content:
@@ -1008,6 +1060,26 @@ components:
             error:
               code: invalid_token
               message: Invalid token
+    IdempotencyConflict:
+      description: Idempotency key was already used with another payload
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: idempotency_key_payload_mismatch
+              message: Idempotency-Key was already used with different payload
+    SyncBatchTooLarge:
+      description: Too many operations in one sync request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: sync_batch_too_large
+              message: Too many operations in one batch
     FamilyNotFound:
       description: Family not found
       content:
@@ -1161,6 +1233,193 @@ components:
               type: string
             message:
               type: string
+    SyncBatchRequest:
+      type: object
+      required: [operations]
+      properties:
+        client_generated_at:
+          type: string
+          format: date-time
+          nullable: true
+        operations:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/SyncOperation'
+    SyncOperation:
+      oneOf:
+        - $ref: '#/components/schemas/SyncCreateExpenseOperation'
+        - $ref: '#/components/schemas/SyncCreateTodoOperation'
+        - $ref: '#/components/schemas/SyncSetTodoCompletedOperation'
+      discriminator:
+        propertyName: type
+        mapping:
+          create_expense: '#/components/schemas/SyncCreateExpenseOperation'
+          create_todo: '#/components/schemas/SyncCreateTodoOperation'
+          set_todo_completed: '#/components/schemas/SyncSetTodoCompletedOperation'
+    SyncCreateExpenseOperation:
+      type: object
+      required: [operation_id, type, local_id, payload]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [create_expense]
+        local_id:
+          type: string
+          maxLength: 128
+        payload:
+          $ref: '#/components/schemas/CreateExpenseRequest'
+    SyncCreateTodoOperation:
+      type: object
+      required: [operation_id, type, local_id, payload]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [create_todo]
+        local_id:
+          type: string
+          maxLength: 128
+        payload:
+          $ref: '#/components/schemas/SyncCreateTodoPayload'
+    SyncSetTodoCompletedOperation:
+      type: object
+      required: [operation_id, type, payload]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [set_todo_completed]
+        payload:
+          $ref: '#/components/schemas/SyncSetTodoCompletedPayload'
+    SyncCreateTodoPayload:
+      type: object
+      required: [list_id, title]
+      properties:
+        list_id:
+          type: string
+        title:
+          type: string
+    SyncSetTodoCompletedPayload:
+      type: object
+      required: [is_completed]
+      anyOf:
+        - required: [todo_id]
+        - required: [todo_local_id]
+      properties:
+        todo_id:
+          type: string
+        todo_local_id:
+          type: string
+        is_completed:
+          type: boolean
+    SyncBatchResponse:
+      type: object
+      required: [sync_id, status, summary, results, mappings, server_time]
+      properties:
+        sync_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [success, partial_success, failed]
+        summary:
+          $ref: '#/components/schemas/SyncBatchSummary'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncOperationResult'
+        mappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncEntityMapping'
+        server_time:
+          type: string
+          format: date-time
+    SyncBatchSummary:
+      type: object
+      required: [total, applied, duplicate, failed]
+      properties:
+        total:
+          type: integer
+        applied:
+          type: integer
+        duplicate:
+          type: integer
+        failed:
+          type: integer
+    SyncOperationResult:
+      type: object
+      required: [operation_id, type, status]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [create_expense, create_todo, set_todo_completed]
+        status:
+          type: string
+          enum: [applied, duplicate, failed]
+        local_id:
+          type: string
+          nullable: true
+        entity:
+          type: string
+          enum: [expense, todo_item]
+          nullable: true
+        server_id:
+          type: string
+          nullable: true
+        error:
+          allOf:
+            - $ref: '#/components/schemas/SyncOperationError'
+          nullable: true
+    SyncEntityMapping:
+      type: object
+      required: [entity, local_id, server_id]
+      properties:
+        entity:
+          type: string
+          enum: [expense, todo_item]
+        local_id:
+          type: string
+        server_id:
+          type: string
+    SyncOperationError:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code:
+          $ref: '#/components/schemas/SyncErrorCode'
+        message:
+          type: string
+        retryable:
+          type: boolean
+    SyncErrorCode:
+      type: string
+      enum:
+        - invalid_request
+        - invalid_json
+        - unsupported_operation_type
+        - operation_payload_mismatch
+        - dependency_not_resolved
+        - tag_not_found
+        - todo_list_not_found
+        - todo_item_not_found
+        - family_not_found
+        - sync_batch_too_large
+        - idempotency_key_payload_mismatch
+        - batch_in_progress
+        - internal_error
     AuthMeResponse:
       type: object
       required: [id]
