@@ -38,9 +38,11 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("expenses.list: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("expenses.list: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -86,6 +88,7 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 
 	items, total, err := h.Expenses.ListExpenses(r.Context(), family.ID, filter)
 	if err != nil {
+		h.log.InternalError("expenses.list: list expenses failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -117,9 +120,11 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("expenses.create: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("expenses.create: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -155,9 +160,11 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	created, err := h.Expenses.CreateExpense(r.Context(), input)
 	if err != nil {
 		if errors.Is(err, expensesdomain.ErrTagNotFound) {
+			h.log.BusinessError("expenses.create: tag not found", err, "user_id", user.ID, "family_id", family.ID)
 			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
 			return
 		}
+		h.log.InternalError("expenses.create: create expense failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -187,9 +194,11 @@ func (h *Handlers) UpdateExpense(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("expenses.update: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("expenses.update: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -226,10 +235,13 @@ func (h *Handlers) UpdateExpense(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, expensesdomain.ErrExpenseNotFound):
+			h.log.BusinessError("expenses.update: expense not found", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
 			writeError(w, http.StatusNotFound, "expense_not_found", "expense not found")
 		case errors.Is(err, expensesdomain.ErrTagNotFound):
+			h.log.BusinessError("expenses.update: tag not found", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
 			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
 		default:
+			h.log.InternalError("expenses.update: update expense failed", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return
@@ -254,18 +266,22 @@ func (h *Handlers) DeleteExpense(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("expenses.delete: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("expenses.delete: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
 	if err := h.Expenses.DeleteExpense(r.Context(), family.ID, expenseID); err != nil {
 		if errors.Is(err, expensesdomain.ErrExpenseNotFound) {
+			h.log.BusinessError("expenses.delete: expense not found", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
 			writeError(w, http.StatusNotFound, "expense_not_found", "expense not found")
 			return
 		}
+		h.log.InternalError("expenses.delete: delete expense failed", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}

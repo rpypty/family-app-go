@@ -7,6 +7,7 @@ import (
 	gymdomain "family-app-go/internal/domain/gym"
 	syncdomain "family-app-go/internal/domain/sync"
 	todosdomain "family-app-go/internal/domain/todos"
+	"family-app-go/pkg/logger"
 )
 
 type Handlers struct {
@@ -16,9 +17,10 @@ type Handlers struct {
 	Todos     *todosdomain.Service
 	Sync      *syncdomain.Service
 	Gym       *gymdomain.Service
+	log       logger.Logger
 }
 
-func New(analytics *analyticsdomain.Service, families *familydomain.Service, expenses *expensesdomain.Service, todos *todosdomain.Service, sync *syncdomain.Service, gym *gymdomain.Service) *Handlers {
+func New(analytics *analyticsdomain.Service, families *familydomain.Service, expenses *expensesdomain.Service, todos *todosdomain.Service, sync *syncdomain.Service, gym *gymdomain.Service, log logger.Logger) *Handlers {
 	return &Handlers{
 		Analytics: analytics,
 		Families:  families,
@@ -26,5 +28,6 @@ func New(analytics *analyticsdomain.Service, families *familydomain.Service, exp
 		Todos:     todos,
 		Sync:      sync,
 		Gym:       gym,
+		log:       log,
 	}
 }

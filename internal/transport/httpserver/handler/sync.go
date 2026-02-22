@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -83,9 +82,11 @@ func (h *Handlers) SyncBatch(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("sync.batch: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("sync.batch: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -107,39 +108,52 @@ func (h *Handlers) SyncBatch(w http.ResponseWriter, r *http.Request) {
 		Operations:     operations,
 	})
 	if err != nil {
+		logAttrs := []any{
+			"user_id", user.ID,
+			"family_id", family.ID,
+			"operations", len(operations),
+			"has_idempotency_key", idempotencyKey != "",
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+		}
+
 		switch {
 		case errors.Is(err, syncdomain.ErrBatchTooLarge):
+			h.log.BusinessError("sync.batch: batch too large", err, logAttrs...)
 			writeError(w, http.StatusRequestEntityTooLarge, "sync_batch_too_large", "too many operations in one batch")
 		case errors.Is(err, syncdomain.ErrIdempotencyKeyPayloadMismatch):
+			h.log.BusinessError("sync.batch: idempotency key payload mismatch", err, logAttrs...)
 			writeError(w, http.StatusConflict, "idempotency_key_payload_mismatch", "Idempotency-Key was already used with different payload")
 		case errors.Is(err, syncdomain.ErrBatchInProgress):
+			h.log.BusinessError("sync.batch: batch in progress", err, logAttrs...)
 			writeError(w, http.StatusConflict, "batch_in_progress", "sync batch is already in progress")
 		default:
+			h.log.InternalError("sync.batch: process batch failed", err, logAttrs...)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
-		log.Printf(
-			"sync: failed user_id=%s family_id=%s operations=%d has_idempotency_key=%t duration_ms=%d err=%v",
-			user.ID,
-			family.ID,
-			len(operations),
-			idempotencyKey != "",
-			time.Since(startedAt).Milliseconds(),
-			err,
-		)
 		return
 	}
 
-	log.Printf(
-		"sync: completed sync_id=%s user_id=%s family_id=%s status=%s total=%d applied=%d duplicate=%d failed=%d has_idempotency_key=%t duration_ms=%d",
+	h.log.Info(
+		"sync: completed",
+		"sync_id",
 		response.SyncID,
+		"user_id",
 		user.ID,
+		"family_id",
 		family.ID,
+		"status",
 		response.Status,
+		"total",
 		response.Summary.Total,
+		"applied",
 		response.Summary.Applied,
+		"duplicate",
 		response.Summary.Duplicate,
+		"failed",
 		response.Summary.Failed,
+		"has_idempotency_key",
 		idempotencyKey != "",
+		"duration_ms",
 		time.Since(startedAt).Milliseconds(),
 	)
 

@@ -1,9 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"time"
+
+	"family-app-go/pkg/logger"
 )
 
 type Config struct {
@@ -39,10 +42,10 @@ type SupabaseConfig struct {
 	MockUserAvatar string
 }
 
-func Load() Config {
-	err := loadDotEnv()
+func Load(log logger.Logger) (Config, error) {
+	err := loadDotEnv(log)
 	if err != nil {
-		panic("Failed to load .env file: " + err.Error())
+		return Config{}, fmt.Errorf("load .env: %w", err)
 	}
 
 	return Config{
@@ -72,7 +75,7 @@ func Load() Config {
 			MockUserName:   getEnv("AUTH_MOCK_USER_NAME", ""),
 			MockUserAvatar: getEnv("AUTH_MOCK_USER_AVATAR_URL", ""),
 		},
-	}
+	}, nil
 }
 
 func getEnv(key, fallback string) string {

@@ -30,6 +30,8 @@ On startup, the service applies SQL migrations from `migrations/` in filename or
 
 - `HTTP_PORT` (default `8080`)
 - `ENV` (default `development`)
+- `LOG_LEVEL` (default `debug` in `development`, otherwise `info`; values: `debug|info|warn|error|critical`)
+- `LOG_FORMAT` (default `json`; values: `text|json`)
 - `DB_DSN` (optional override)
 - `DB_HOST` (default `localhost`)
 - `DB_PORT` (default `5432`)

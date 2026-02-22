@@ -2,10 +2,10 @@ package db
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"family-app-go/internal/config"
+	"family-app-go/pkg/logger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -16,11 +16,21 @@ const (
 	defaultConnMaxLifetime = 30 * time.Minute
 )
 
-func NewPostgres(cfg config.DBConfig) (*gorm.DB, error) {
+func NewPostgres(log logger.Logger, cfg config.DBConfig) (*gorm.DB, error) {
 	if cfg.DSN != "" {
-		log.Printf("db: connecting using DSN")
+		log.Info("db: connecting using DSN")
 	} else {
-		log.Printf("db: connecting to postgres host=%s port=%s dbname=%s sslmode=%s", cfg.Host, cfg.Port, cfg.Name, cfg.SSLMode)
+		log.Info(
+			"db: connecting to postgres",
+			"host",
+			cfg.Host,
+			"port",
+			cfg.Port,
+			"dbname",
+			cfg.Name,
+			"sslmode",
+			cfg.SSLMode,
+		)
 	}
 
 	dsn := cfg.GetDSN()
@@ -55,6 +65,6 @@ func NewPostgres(cfg config.DBConfig) (*gorm.DB, error) {
 		return nil, fmt.Errorf("db ping: %w", err)
 	}
 
-	log.Printf("db: connected")
+	log.Info("db: connected")
 	return gormDB, nil
 }
