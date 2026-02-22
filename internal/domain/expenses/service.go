@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -162,8 +163,18 @@ func (s *Service) ListTags(ctx context.Context, familyID string) ([]Tag, error) 
 	return s.repo.ListTags(ctx, familyID)
 }
 
-func (s *Service) CreateTag(ctx context.Context, familyID, name string) (*Tag, error) {
-	name, err := validateTagName(name)
+func (s *Service) CreateTag(ctx context.Context, input CreateTagInput) (*Tag, error) {
+	name, err := validateTagName(input.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	color, err := normalizeTagColor(input.Color)
+	if err != nil {
+		return nil, err
+	}
+
+	emoji, err := normalizeTagEmoji(input.Emoji)
 	if err != nil {
 		return nil, err
 	}
@@ -175,8 +186,10 @@ func (s *Service) CreateTag(ctx context.Context, familyID, name string) (*Tag, e
 
 	tag := Tag{
 		ID:       id,
-		FamilyID: familyID,
+		FamilyID: input.FamilyID,
 		Name:     name,
+		Color:    color,
+		Emoji:    emoji,
 	}
 
 	if err := s.repo.CreateTag(ctx, &tag); err != nil {
@@ -186,18 +199,18 @@ func (s *Service) CreateTag(ctx context.Context, familyID, name string) (*Tag, e
 	return &tag, nil
 }
 
-func (s *Service) UpdateTag(ctx context.Context, familyID, tagID, name string) (*Tag, error) {
-	name, err := validateTagName(name)
+func (s *Service) UpdateTag(ctx context.Context, input UpdateTagInput) (*Tag, error) {
+	name, err := validateTagName(input.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	tag, err := s.repo.GetTagByID(ctx, familyID, tagID)
+	tag, err := s.repo.GetTagByID(ctx, input.FamilyID, input.TagID)
 	if err != nil {
 		return nil, err
 	}
 
-	count, err := s.repo.CountTagsByName(ctx, familyID, name, tag.ID)
+	count, err := s.repo.CountTagsByName(ctx, input.FamilyID, name, tag.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +219,21 @@ func (s *Service) UpdateTag(ctx context.Context, familyID, tagID, name string) (
 	}
 
 	tag.Name = name
+	if input.Color.Set {
+		color, err := normalizeTagColor(input.Color.Value)
+		if err != nil {
+			return nil, err
+		}
+		tag.Color = color
+	}
+	if input.Emoji.Set {
+		emoji, err := normalizeTagEmoji(input.Emoji.Value)
+		if err != nil {
+			return nil, err
+		}
+		tag.Emoji = emoji
+	}
+
 	if err := s.repo.UpdateTag(ctx, tag); err != nil {
 		return nil, err
 	}
@@ -282,6 +310,133 @@ func validateTagName(name string) (string, error) {
 		return "", fmt.Errorf("name must be at most %d characters", maxLen)
 	}
 	return name, nil
+}
+
+var tagColorRegex = regexp.MustCompile(`^#[0-9a-f]{6}$`)
+
+func normalizeTagColor(value *string) (*string, error) {
+	if value == nil {
+		return nil, nil
+	}
+
+	color := strings.ToLower(strings.TrimSpace(*value))
+	if !tagColorRegex.MatchString(color) {
+		return nil, ErrInvalidTagColor
+	}
+
+	return &color, nil
+}
+
+func normalizeTagEmoji(value *string) (*string, error) {
+	if value == nil {
+		return nil, nil
+	}
+
+	emoji := strings.TrimSpace(*value)
+	if emoji == "" {
+		return nil, ErrInvalidTagEmoji
+	}
+	if !isSingleEmojiGrapheme(emoji) {
+		return nil, ErrInvalidTagEmoji
+	}
+
+	return &emoji, nil
+}
+
+const (
+	variationSelector16    rune = 0xFE0F
+	zeroWidthJoiner        rune = 0x200D
+	combiningEnclosingMark rune = 0x20E3
+)
+
+func isSingleEmojiGrapheme(value string) bool {
+	runes := []rune(value)
+	if len(runes) == 0 {
+		return false
+	}
+
+	if isKeycapEmoji(runes) {
+		return true
+	}
+	if len(runes) == 2 && isRegionalIndicator(runes[0]) && isRegionalIndicator(runes[1]) {
+		return true
+	}
+
+	index, ok := consumeEmojiComponent(runes, 0)
+	if !ok {
+		return false
+	}
+	for index < len(runes) {
+		if runes[index] != zeroWidthJoiner {
+			return false
+		}
+		index++
+
+		next, ok := consumeEmojiComponent(runes, index)
+		if !ok {
+			return false
+		}
+		index = next
+	}
+
+	return true
+}
+
+func consumeEmojiComponent(runes []rune, index int) (int, bool) {
+	if index >= len(runes) {
+		return index, false
+	}
+	if !isEmojiBase(runes[index]) {
+		return index, false
+	}
+	index++
+
+	if index < len(runes) && runes[index] == variationSelector16 {
+		index++
+	}
+	if index < len(runes) && isEmojiModifier(runes[index]) {
+		index++
+	}
+
+	return index, true
+}
+
+func isEmojiBase(r rune) bool {
+	switch {
+	case r >= 0x1F000 && r <= 0x1FAFF:
+		return true
+	case r >= 0x2600 && r <= 0x27BF:
+		return true
+	case r >= 0x2300 && r <= 0x23FF:
+		return true
+	case r >= 0x2B00 && r <= 0x2BFF:
+		return true
+	case r == 0x00A9 || r == 0x00AE || r == 0x3030 || r == 0x303D || r == 0x3297 || r == 0x3299:
+		return true
+	}
+	return false
+}
+
+func isEmojiModifier(r rune) bool {
+	return r >= 0x1F3FB && r <= 0x1F3FF
+}
+
+func isRegionalIndicator(r rune) bool {
+	return r >= 0x1F1E6 && r <= 0x1F1FF
+}
+
+func isKeycapEmoji(runes []rune) bool {
+	if len(runes) == 2 && isKeycapBase(runes[0]) && runes[1] == combiningEnclosingMark {
+		return true
+	}
+	if len(runes) == 3 && isKeycapBase(runes[0]) && runes[1] == variationSelector16 && runes[2] == combiningEnclosingMark {
+		return true
+	}
+	return false
+}
+
+func isKeycapBase(r rune) bool {
+	return r == '#' || r == '*' || (r >= '0' && r <= '9')
 }
 
 func isUUID(value string) bool {

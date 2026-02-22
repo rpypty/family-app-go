@@ -18,6 +18,8 @@ type Tag struct {
 	ID        string    `gorm:"type:uuid;primaryKey"`
 	FamilyID  string    `gorm:"type:uuid;index;not null"`
 	Name      string    `gorm:"not null"`
+	Color     *string   `gorm:"type:text"`
+	Emoji     *string   `gorm:"type:text"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 }
 
@@ -57,4 +59,24 @@ type UpdateExpenseInput struct {
 	Currency string
 	Title    string
 	TagIDs   []string
+}
+
+type CreateTagInput struct {
+	FamilyID string
+	Name     string
+	Color    *string
+	Emoji    *string
+}
+
+type OptionalNullableString struct {
+	Set   bool
+	Value *string
+}
+
+type UpdateTagInput struct {
+	FamilyID string
+	TagID    string
+	Name     string
+	Color    OptionalNullableString
+	Emoji    OptionalNullableString
 }

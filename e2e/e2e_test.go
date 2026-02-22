@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,6 +30,7 @@ import (
 	userrepo "family-app-go/internal/repository/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
+	"family-app-go/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -57,7 +59,9 @@ func setupE2E(t *testing.T) *testEnv {
 		},
 	}
 
-	dbConn, err := db.NewPostgres(cfg.DB)
+	log := logger.New(io.Discard, slog.LevelError, "text")
+
+	dbConn, err := db.NewPostgres(log, cfg.DB)
 	if err != nil {
 		t.Fatalf("db connect: %v", err)
 	}
@@ -80,9 +84,9 @@ func setupE2E(t *testing.T) *testEnv {
 	userService := userdomain.NewService(userRepo)
 	todosRepo := todosrepo.NewPostgres(dbConn)
 	todosService := todosdomain.NewService(todosRepo)
-	handlers := handler.New(analyticsService, familyService, expensesService, todosService, nil, nil)
+	handlers := handler.New(analyticsService, familyService, expensesService, todosService, nil, nil, log)
 
-	router := httpserver.NewRouter(cfg, handlers, userService)
+	router := httpserver.NewRouter(cfg, handlers, userService, log)
 	server := httptest.NewServer(router)
 
 	return &testEnv{server: server, authServer: authServer, db: dbConn}
@@ -247,6 +251,8 @@ type expenseListResponse struct {
 type tagResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
+	Color     *string   `json:"color"`
+	Emoji     *string   `json:"emoji"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -389,8 +395,10 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 		t.Fatalf("expected 404, got %d: %s", resp.StatusCode, string(body))
 	}
 
-	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/tags", user1, map[string]string{
-		"name": "Food",
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/tags", user1, map[string]interface{}{
+		"name":  "Food",
+		"color": "#AABBCC",
+		"emoji": "🙂",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
@@ -398,6 +406,82 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 	var tag tagResponse
 	if err := json.Unmarshal(body, &tag); err != nil {
 		t.Fatalf("decode tag: %v", err)
+	}
+	if tag.Color == nil || *tag.Color != "#aabbcc" {
+		t.Fatalf("expected normalized color, got %+v", tag.Color)
+	}
+	if tag.Emoji == nil || *tag.Emoji != "🙂" {
+		t.Fatalf("expected emoji, got %+v", tag.Emoji)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPatch, env.server.URL+"/tags/"+tag.ID, user1, map[string]interface{}{
+		"name":  "Food Updated",
+		"color": "#00FF11",
+		"emoji": "❤️",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	if err := json.Unmarshal(body, &tag); err != nil {
+		t.Fatalf("decode updated tag: %v", err)
+	}
+	if tag.Name != "Food Updated" {
+		t.Fatalf("expected updated name, got %q", tag.Name)
+	}
+	if tag.Color == nil || *tag.Color != "#00ff11" {
+		t.Fatalf("expected normalized color, got %+v", tag.Color)
+	}
+	if tag.Emoji == nil || *tag.Emoji != "❤️" {
+		t.Fatalf("expected emoji, got %+v", tag.Emoji)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPatch, env.server.URL+"/tags/"+tag.ID, user1, map[string]interface{}{
+		"name":  "Food Updated",
+		"color": nil,
+		"emoji": nil,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	if err := json.Unmarshal(body, &tag); err != nil {
+		t.Fatalf("decode cleared tag: %v", err)
+	}
+	if tag.Color != nil {
+		t.Fatalf("expected nil color, got %+v", tag.Color)
+	}
+	if tag.Emoji != nil {
+		t.Fatalf("expected nil emoji, got %+v", tag.Emoji)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/tags", user1, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	var tags []tagResponse
+	if err := json.Unmarshal(body, &tags); err != nil {
+		t.Fatalf("decode tags list: %v", err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(tags))
+	}
+	if tags[0].Color != nil || tags[0].Emoji != nil {
+		t.Fatalf("expected cleared color/emoji, got color=%+v emoji=%+v", tags[0].Color, tags[0].Emoji)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/tags", user1, map[string]interface{}{
+		"name":  "Invalid Color",
+		"color": "#12GG34",
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid color, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/tags", user1, map[string]interface{}{
+		"name":  "Invalid Emoji",
+		"emoji": "ab",
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid emoji, got %d: %s", resp.StatusCode, string(body))
 	}
 
 	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/expenses", user1, map[string]interface{}{
