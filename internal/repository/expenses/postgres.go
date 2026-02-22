@@ -187,7 +187,9 @@ func (r *PostgresRepository) UpdateTag(ctx context.Context, tag *expensesdomain.
 		Model(&expensesdomain.Tag{}).
 		Where("id = ? AND family_id = ?", tag.ID, tag.FamilyID).
 		Updates(map[string]interface{}{
-			"name": tag.Name,
+			"name":  tag.Name,
+			"color": tag.Color,
+			"emoji": tag.Emoji,
 		}).Error
 }
 

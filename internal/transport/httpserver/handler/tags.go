@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -13,11 +14,36 @@ import (
 )
 
 type createTagRequest struct {
-	Name string `json:"name"`
+	Name  string  `json:"name"`
+	Color *string `json:"color"`
+	Emoji *string `json:"emoji"`
 }
 
 type updateTagRequest struct {
-	Name string `json:"name"`
+	Name  string                 `json:"name"`
+	Color optionalNullableString `json:"color"`
+	Emoji optionalNullableString `json:"emoji"`
+}
+
+type optionalNullableString struct {
+	Set   bool
+	Value *string
+}
+
+func (o *optionalNullableString) UnmarshalJSON(data []byte) error {
+	o.Set = true
+	if string(data) == "null" {
+		o.Value = nil
+		return nil
+	}
+
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	o.Value = &value
+	return nil
 }
 
 func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +77,8 @@ func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
 		response = append(response, tagResponse{
 			ID:        tag.ID,
 			Name:      tag.Name,
+			Color:     tag.Color,
+			Emoji:     tag.Emoji,
 			CreatedAt: tag.CreatedAt,
 		})
 	}
@@ -92,8 +120,17 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.Expenses.CreateTag(r.Context(), family.ID, req.Name)
+	created, err := h.Expenses.CreateTag(r.Context(), expensesdomain.CreateTagInput{
+		FamilyID: family.ID,
+		Name:     req.Name,
+		Color:    req.Color,
+		Emoji:    req.Emoji,
+	})
 	if err != nil {
+		if writeTagValidationError(w, err) {
+			h.log.BusinessError("tags.create: validation failed", err, "user_id", user.ID, "family_id", family.ID)
+			return
+		}
 		h.log.InternalError("tags.create: create tag failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
@@ -102,6 +139,8 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, tagResponse{
 		ID:        created.ID,
 		Name:      created.Name,
+		Color:     created.Color,
+		Emoji:     created.Emoji,
 		CreatedAt: created.CreatedAt,
 	})
 }
@@ -189,7 +228,19 @@ func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.Expenses.UpdateTag(r.Context(), family.ID, tagID, req.Name)
+	updated, err := h.Expenses.UpdateTag(r.Context(), expensesdomain.UpdateTagInput{
+		FamilyID: family.ID,
+		TagID:    tagID,
+		Name:     req.Name,
+		Color: expensesdomain.OptionalNullableString{
+			Set:   req.Color.Set,
+			Value: req.Color.Value,
+		},
+		Emoji: expensesdomain.OptionalNullableString{
+			Set:   req.Emoji.Set,
+			Value: req.Emoji.Value,
+		},
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, expensesdomain.ErrTagNotFound):
@@ -198,6 +249,8 @@ func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, expensesdomain.ErrTagNameTaken):
 			h.log.BusinessError("tags.update: tag name already exists", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
 			writeError(w, http.StatusConflict, "tag_name_taken", "Tag name already exists")
+		case writeTagValidationError(w, err):
+			h.log.BusinessError("tags.update: validation failed", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
 		default:
 			h.log.InternalError("tags.update: update tag failed", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -208,6 +261,8 @@ func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tagResponse{
 		ID:        updated.ID,
 		Name:      updated.Name,
+		Color:     updated.Color,
+		Emoji:     updated.Emoji,
 		CreatedAt: updated.CreatedAt,
 	})
 }
@@ -215,5 +270,20 @@ func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
 type tagResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
+	Color     *string   `json:"color"`
+	Emoji     *string   `json:"emoji"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+func writeTagValidationError(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, expensesdomain.ErrInvalidTagColor):
+		writeError(w, http.StatusBadRequest, "invalid_request", "color must be null or #RRGGBB")
+		return true
+	case errors.Is(err, expensesdomain.ErrInvalidTagEmoji):
+		writeError(w, http.StatusBadRequest, "invalid_request", "emoji must be a single emoji grapheme")
+		return true
+	default:
+		return false
+	}
 }

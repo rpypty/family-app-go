@@ -511,6 +511,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateTagRequest'
       responses:
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
         '201':
           description: Created
           content:
@@ -535,6 +537,8 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateTagRequest'
       responses:
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
         '200':
           description: OK
           content:
@@ -1515,6 +1519,13 @@ components:
           type: string
         name:
           type: string
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9a-f]{6}$'
+        emoji:
+          type: string
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -1877,12 +1888,26 @@ components:
       properties:
         name:
           type: string
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        emoji:
+          type: string
+          nullable: true
     UpdateTagRequest:
       type: object
       required: [name]
       properties:
         name:
           type: string
+        color:
+          type: string
+          nullable: true
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        emoji:
+          type: string
+          nullable: true
     CreateTodoListRequest:
       type: object
       required: [title]

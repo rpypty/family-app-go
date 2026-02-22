@@ -394,7 +394,10 @@ func TestCreateAndDeleteTag(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
 
-	created, err := svc.CreateTag(context.Background(), "fam-1", "Food")
+	created, err := svc.CreateTag(context.Background(), CreateTagInput{
+		FamilyID: "fam-1",
+		Name:     "Food",
+	})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -418,6 +421,152 @@ func TestDeleteTagNotFound(t *testing.T) {
 	}
 }
 
+func TestCreateTagWithColorAndEmoji(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	svc := NewService(repo)
+
+	created, err := svc.CreateTag(context.Background(), CreateTagInput{
+		FamilyID: "fam-1",
+		Name:     "Food",
+		Color:    strPtr("#A1B2C3"),
+		Emoji:    strPtr("👨‍👩‍👧‍👦"),
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if created.Color == nil || *created.Color != "#a1b2c3" {
+		t.Fatalf("expected normalized color, got %+v", created.Color)
+	}
+	if created.Emoji == nil || *created.Emoji != "👨‍👩‍👧‍👦" {
+		t.Fatalf("expected emoji, got %+v", created.Emoji)
+	}
+}
+
+func TestUpdateTagWithColorAndEmoji(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.tags[tagID1] = &Tag{
+		ID:       tagID1,
+		FamilyID: "fam-1",
+		Name:     "Food",
+	}
+	svc := NewService(repo)
+
+	updated, err := svc.UpdateTag(context.Background(), UpdateTagInput{
+		FamilyID: "fam-1",
+		TagID:    tagID1,
+		Name:     "Food Updated",
+		Color: OptionalNullableString{
+			Set:   true,
+			Value: strPtr("#00FFAA"),
+		},
+		Emoji: OptionalNullableString{
+			Set:   true,
+			Value: strPtr("❤️"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if updated.Name != "Food Updated" {
+		t.Fatalf("expected updated name, got %q", updated.Name)
+	}
+	if updated.Color == nil || *updated.Color != "#00ffaa" {
+		t.Fatalf("expected normalized color, got %+v", updated.Color)
+	}
+	if updated.Emoji == nil || *updated.Emoji != "❤️" {
+		t.Fatalf("expected emoji, got %+v", updated.Emoji)
+	}
+}
+
+func TestUpdateTagClearColorAndEmojiWithNull(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.tags[tagID1] = &Tag{
+		ID:       tagID1,
+		FamilyID: "fam-1",
+		Name:     "Food",
+		Color:    strPtr("#112233"),
+		Emoji:    strPtr("👨‍👩‍👧‍👦"),
+	}
+	svc := NewService(repo)
+
+	updated, err := svc.UpdateTag(context.Background(), UpdateTagInput{
+		FamilyID: "fam-1",
+		TagID:    tagID1,
+		Name:     "Food",
+		Color: OptionalNullableString{
+			Set:   true,
+			Value: nil,
+		},
+		Emoji: OptionalNullableString{
+			Set:   true,
+			Value: nil,
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if updated.Color != nil {
+		t.Fatalf("expected nil color, got %+v", updated.Color)
+	}
+	if updated.Emoji != nil {
+		t.Fatalf("expected nil emoji, got %+v", updated.Emoji)
+	}
+}
+
+func TestListTagsIncludesColorAndEmoji(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.tags[tagID1] = &Tag{
+		ID:       tagID1,
+		FamilyID: "fam-1",
+		Name:     "Food",
+		Color:    strPtr("#ffffff"),
+		Emoji:    strPtr("🙂"),
+	}
+	svc := NewService(repo)
+
+	tags, err := svc.ListTags(context.Background(), "fam-1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(tags))
+	}
+	if tags[0].Color == nil || *tags[0].Color != "#ffffff" {
+		t.Fatalf("expected color #ffffff, got %+v", tags[0].Color)
+	}
+	if tags[0].Emoji == nil || *tags[0].Emoji != "🙂" {
+		t.Fatalf("expected emoji 🙂, got %+v", tags[0].Emoji)
+	}
+}
+
+func TestCreateTagInvalidColor(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	svc := NewService(repo)
+
+	_, err := svc.CreateTag(context.Background(), CreateTagInput{
+		FamilyID: "fam-1",
+		Name:     "Food",
+		Color:    strPtr("#GGGGGG"),
+	})
+	if !errors.Is(err, ErrInvalidTagColor) {
+		t.Fatalf("expected ErrInvalidTagColor, got %v", err)
+	}
+}
+
+func TestCreateTagInvalidEmoji(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	svc := NewService(repo)
+
+	_, err := svc.CreateTag(context.Background(), CreateTagInput{
+		FamilyID: "fam-1",
+		Name:     "Food",
+		Emoji:    strPtr("ab"),
+	})
+	if !errors.Is(err, ErrInvalidTagEmoji) {
+		t.Fatalf("expected ErrInvalidTagEmoji, got %v", err)
+	}
+}
+
 func contains(values []string, value string) bool {
 	for _, item := range values {
 		if item == value {
@@ -434,4 +583,8 @@ func containsAny(values []string, candidates []string) bool {
 		}
 	}
 	return false
+}
+
+func strPtr(value string) *string {
+	return &value
 }
