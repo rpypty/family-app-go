@@ -66,6 +66,7 @@ func (h *Handlers) ListGymEntries(w http.ResponseWriter, r *http.Request) {
 
 	items, total, err := h.Gym.ListGymEntries(r.Context(), user.ID, filter)
 	if err != nil {
+		h.log.InternalError("gym.list_entries: list gym entries failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -114,6 +115,7 @@ func (h *Handlers) CreateGymEntry(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.Gym.CreateGymEntry(r.Context(), input)
 	if err != nil {
+		h.log.InternalError("gym.create_entry: create gym entry failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -162,9 +164,11 @@ func (h *Handlers) UpdateGymEntry(w http.ResponseWriter, r *http.Request) {
 	updated, err := h.Gym.UpdateGymEntry(r.Context(), input)
 	if err != nil {
 		if errors.Is(err, gymdomain.ErrGymEntryNotFound) {
+			h.log.BusinessError("gym.update_entry: gym entry not found", err, "user_id", user.ID, "entry_id", entryID)
 			writeError(w, http.StatusNotFound, "gym_entry_not_found", "gym entry not found")
 			return
 		}
+		h.log.InternalError("gym.update_entry: update gym entry failed", err, "user_id", user.ID, "entry_id", entryID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -187,9 +191,11 @@ func (h *Handlers) DeleteGymEntry(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.Gym.DeleteGymEntry(r.Context(), user.ID, entryID); err != nil {
 		if errors.Is(err, gymdomain.ErrGymEntryNotFound) {
+			h.log.BusinessError("gym.delete_entry: gym entry not found", err, "user_id", user.ID, "entry_id", entryID)
 			writeError(w, http.StatusNotFound, "gym_entry_not_found", "gym entry not found")
 			return
 		}
+		h.log.InternalError("gym.delete_entry: delete gym entry failed", err, "user_id", user.ID, "entry_id", entryID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -257,6 +263,7 @@ func (h *Handlers) ListWorkouts(w http.ResponseWriter, r *http.Request) {
 
 	items, total, err := h.Gym.ListWorkouts(r.Context(), user.ID, filter)
 	if err != nil {
+		h.log.InternalError("gym.list_workouts: list workouts failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -288,9 +295,11 @@ func (h *Handlers) GetWorkout(w http.ResponseWriter, r *http.Request) {
 	workout, err := h.Gym.GetWorkoutByID(r.Context(), user.ID, workoutID)
 	if err != nil {
 		if errors.Is(err, gymdomain.ErrWorkoutNotFound) {
+			h.log.BusinessError("gym.get_workout: workout not found", err, "user_id", user.ID, "workout_id", workoutID)
 			writeError(w, http.StatusNotFound, "workout_not_found", "workout not found")
 			return
 		}
+		h.log.InternalError("gym.get_workout: get workout failed", err, "user_id", user.ID, "workout_id", workoutID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -340,6 +349,7 @@ func (h *Handlers) CreateWorkout(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.Gym.CreateWorkout(r.Context(), input)
 	if err != nil {
+		h.log.InternalError("gym.create_workout: create workout failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -396,9 +406,11 @@ func (h *Handlers) UpdateWorkout(w http.ResponseWriter, r *http.Request) {
 	updated, err := h.Gym.UpdateWorkout(r.Context(), input)
 	if err != nil {
 		if errors.Is(err, gymdomain.ErrWorkoutNotFound) {
+			h.log.BusinessError("gym.update_workout: workout not found", err, "user_id", user.ID, "workout_id", workoutID)
 			writeError(w, http.StatusNotFound, "workout_not_found", "workout not found")
 			return
 		}
+		h.log.InternalError("gym.update_workout: update workout failed", err, "user_id", user.ID, "workout_id", workoutID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -420,9 +432,11 @@ func (h *Handlers) DeleteWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.Gym.DeleteWorkout(r.Context(), user.ID, workoutID); err != nil {
 		if errors.Is(err, gymdomain.ErrWorkoutNotFound) {
+			h.log.BusinessError("gym.delete_workout: workout not found", err, "user_id", user.ID, "workout_id", workoutID)
 			writeError(w, http.StatusNotFound, "workout_not_found", "workout not found")
 			return
 		}
+		h.log.InternalError("gym.delete_workout: delete workout failed", err, "user_id", user.ID, "workout_id", workoutID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -457,6 +471,7 @@ func (h *Handlers) ListTemplates(w http.ResponseWriter, r *http.Request) {
 
 	items, err := h.Gym.ListTemplates(r.Context(), user.ID)
 	if err != nil {
+		h.log.InternalError("gym.list_templates: list templates failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -504,6 +519,7 @@ func (h *Handlers) CreateTemplate(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.Gym.CreateTemplate(r.Context(), input)
 	if err != nil {
+		h.log.InternalError("gym.create_template: create template failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -554,9 +570,11 @@ func (h *Handlers) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	updated, err := h.Gym.UpdateTemplate(r.Context(), input)
 	if err != nil {
 		if errors.Is(err, gymdomain.ErrTemplateNotFound) {
+			h.log.BusinessError("gym.update_template: template not found", err, "user_id", user.ID, "template_id", templateID)
 			writeError(w, http.StatusNotFound, "template_not_found", "template not found")
 			return
 		}
+		h.log.InternalError("gym.update_template: update template failed", err, "user_id", user.ID, "template_id", templateID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -579,9 +597,11 @@ func (h *Handlers) DeleteTemplate(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.Gym.DeleteTemplate(r.Context(), user.ID, templateID); err != nil {
 		if errors.Is(err, gymdomain.ErrTemplateNotFound) {
+			h.log.BusinessError("gym.delete_template: template not found", err, "user_id", user.ID, "template_id", templateID)
 			writeError(w, http.StatusNotFound, "template_not_found", "template not found")
 			return
 		}
+		h.log.InternalError("gym.delete_template: delete template failed", err, "user_id", user.ID, "template_id", templateID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -600,6 +620,7 @@ func (h *Handlers) ListExercises(w http.ResponseWriter, r *http.Request) {
 
 	exercises, err := h.Gym.ListExercises(r.Context(), user.ID)
 	if err != nil {
+		h.log.InternalError("gym.list_exercises: list exercises failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}

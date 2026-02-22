@@ -21,9 +21,11 @@ func (h *Handlers) AnalyticsSummary(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("analytics.summary: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("analytics.summary: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -59,6 +61,7 @@ func (h *Handlers) AnalyticsSummary(w http.ResponseWriter, r *http.Request) {
 		TagIDs:   tagIDs,
 	})
 	if err != nil {
+		h.log.InternalError("analytics.summary: build summary failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -83,9 +86,11 @@ func (h *Handlers) AnalyticsTimeseries(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("analytics.timeseries: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("analytics.timeseries: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -129,6 +134,7 @@ func (h *Handlers) AnalyticsTimeseries(w http.ResponseWriter, r *http.Request) {
 		Timezone: tz,
 	})
 	if err != nil {
+		h.log.InternalError("analytics.timeseries: build timeseries failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -146,9 +152,11 @@ func (h *Handlers) AnalyticsByTag(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("analytics.by_tag: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("analytics.by_tag: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -186,6 +194,7 @@ func (h *Handlers) AnalyticsByTag(w http.ResponseWriter, r *http.Request) {
 		Limit:    limit,
 	})
 	if err != nil {
+		h.log.InternalError("analytics.by_tag: build report failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -203,9 +212,11 @@ func (h *Handlers) ReportsMonthly(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("reports.monthly: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("reports.monthly: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -239,6 +250,7 @@ func (h *Handlers) ReportsMonthly(w http.ResponseWriter, r *http.Request) {
 		TagIDs:   tagIDs,
 	})
 	if err != nil {
+		h.log.InternalError("reports.monthly: build report failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -256,9 +268,11 @@ func (h *Handlers) ReportsCompare(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("reports.compare: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("reports.compare: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -302,6 +316,7 @@ func (h *Handlers) ReportsCompare(w http.ResponseWriter, r *http.Request) {
 		TagIDs:   tagIDs,
 	})
 	if err != nil {
+		h.log.InternalError("reports.compare: build report failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}

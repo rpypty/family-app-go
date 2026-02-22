@@ -1,7 +1,7 @@
 package app
 
 import (
-	"log"
+	"fmt"
 	"net/http"
 
 	"family-app-go/internal/config"
@@ -22,6 +22,7 @@ import (
 	userrepo "family-app-go/internal/repository/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
+	"family-app-go/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -31,22 +32,25 @@ type App struct {
 	db         *gorm.DB
 }
 
-func New() (*App, error) {
-	log.Printf("app: loading config")
-	cfg := config.Load()
-
-	log.Printf("app: initializing database")
-	dbConn, err := db.NewPostgres(cfg.DB)
+func New(log logger.Logger) (*App, error) {
+	log.Info("app: loading config")
+	cfg, err := config.Load(log)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	log.Printf("app: running migrations")
+	log.Info("app: initializing database")
+	dbConn, err := db.NewPostgres(log, cfg.DB)
+	if err != nil {
+		return nil, fmt.Errorf("initialize database: %w", err)
+	}
+
+	log.Info("app: running migrations")
 	if err := db.Migrate(dbConn); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
-	log.Printf("app: initializing services")
+	log.Info("app: initializing services")
 	familyRepo := familyrepo.NewPostgres(dbConn)
 	familyService := familydomain.NewService(familyRepo)
 	expensesRepo := expensesrepo.NewPostgres(dbConn)
@@ -61,12 +65,12 @@ func New() (*App, error) {
 	syncService := syncdomain.NewService(syncRepo, expensesService, todosService)
 	gymRepo := gymrepo.NewPostgres(dbConn)
 	gymService := gymdomain.NewService(gymRepo)
-	handlers := handler.New(analyticsService, familyService, expensesService, todosService, syncService, gymService)
+	handlers := handler.New(analyticsService, familyService, expensesService, todosService, syncService, gymService, log)
 
-	log.Printf("app: initializing router")
-	router := httpserver.NewRouter(cfg, handlers, userService)
+	log.Info("app: initializing router")
+	router := httpserver.NewRouter(cfg, handlers, userService, log)
 
-	log.Printf("app: initializing http server")
+	log.Info("app: initializing http server")
 	srv := httpserver.New(cfg, router)
 
 	return &App{

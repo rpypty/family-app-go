@@ -94,9 +94,11 @@ func (h *Handlers) ListTodoLists(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("todos.list_lists: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("todos.list_lists: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -132,6 +134,7 @@ func (h *Handlers) ListTodoLists(w http.ResponseWriter, r *http.Request) {
 
 	items, total, err := h.Todos.ListTodoLists(r.Context(), family.ID, filter, includeItems, itemsArchived)
 	if err != nil {
+		h.log.InternalError("todos.list_lists: list todo lists failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -171,9 +174,11 @@ func (h *Handlers) CreateTodoList(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("todos.create_list: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("todos.create_list: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -190,12 +195,14 @@ func (h *Handlers) CreateTodoList(w http.ResponseWriter, r *http.Request) {
 		Order:            req.Order,
 	})
 	if err != nil {
+		h.log.InternalError("todos.create_list: create todo list failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
 	counts, err := h.Todos.CountItemsByListID(r.Context(), list.ID)
 	if err != nil {
+		h.log.InternalError("todos.create_list: count items failed", err, "user_id", user.ID, "family_id", family.ID, "list_id", list.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -236,9 +243,11 @@ func (h *Handlers) UpdateTodoList(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("todos.update_list: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("todos.update_list: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -271,8 +280,10 @@ func (h *Handlers) UpdateTodoList(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, todosdomain.ErrTodoListNotFound):
+			h.log.BusinessError("todos.update_list: todo list not found", err, "user_id", user.ID, "family_id", family.ID, "list_id", listID)
 			writeError(w, http.StatusNotFound, "todo_list_not_found", "todo list not found")
 		default:
+			h.log.InternalError("todos.update_list: update todo list failed", err, "user_id", user.ID, "family_id", family.ID, "list_id", listID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return
@@ -280,6 +291,7 @@ func (h *Handlers) UpdateTodoList(w http.ResponseWriter, r *http.Request) {
 
 	counts, err := h.Todos.CountItemsByListID(r.Context(), list.ID)
 	if err != nil {
+		h.log.InternalError("todos.update_list: count items failed", err, "user_id", user.ID, "family_id", family.ID, "list_id", list.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -314,18 +326,22 @@ func (h *Handlers) DeleteTodoList(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("todos.delete_list: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("todos.delete_list: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
 	if err := h.Todos.DeleteTodoList(r.Context(), family.ID, listID); err != nil {
 		if errors.Is(err, todosdomain.ErrTodoListNotFound) {
+			h.log.BusinessError("todos.delete_list: todo list not found", err, "user_id", user.ID, "family_id", family.ID, "list_id", listID)
 			writeError(w, http.StatusNotFound, "todo_list_not_found", "todo list not found")
 			return
 		}
+		h.log.InternalError("todos.delete_list: delete todo list failed", err, "user_id", user.ID, "family_id", family.ID, "list_id", listID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -349,9 +365,11 @@ func (h *Handlers) ListTodoItems(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("todos.list_items: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("todos.list_items: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -365,9 +383,11 @@ func (h *Handlers) ListTodoItems(w http.ResponseWriter, r *http.Request) {
 	items, total, err := h.Todos.ListTodoItems(r.Context(), family.ID, listID, archived)
 	if err != nil {
 		if errors.Is(err, todosdomain.ErrTodoListNotFound) {
+			h.log.BusinessError("todos.list_items: todo list not found", err, "user_id", user.ID, "family_id", family.ID, "list_id", listID)
 			writeError(w, http.StatusNotFound, "todo_list_not_found", "todo list not found")
 			return
 		}
+		h.log.InternalError("todos.list_items: list todo items failed", err, "user_id", user.ID, "family_id", family.ID, "list_id", listID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -409,9 +429,11 @@ func (h *Handlers) CreateTodoItem(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("todos.create_item: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("todos.create_item: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -422,9 +444,11 @@ func (h *Handlers) CreateTodoItem(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, todosdomain.ErrTodoListNotFound) {
+			h.log.BusinessError("todos.create_item: todo list not found", err, "user_id", user.ID, "family_id", family.ID, "list_id", listID)
 			writeError(w, http.StatusNotFound, "todo_list_not_found", "todo list not found")
 			return
 		}
+		h.log.InternalError("todos.create_item: create todo item failed", err, "user_id", user.ID, "family_id", family.ID, "list_id", listID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -454,9 +478,11 @@ func (h *Handlers) UpdateTodoItem(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("todos.update_item: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("todos.update_item: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -489,8 +515,10 @@ func (h *Handlers) UpdateTodoItem(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, todosdomain.ErrTodoItemNotFound):
+			h.log.BusinessError("todos.update_item: todo item not found", err, "user_id", user.ID, "family_id", family.ID, "item_id", itemID)
 			writeError(w, http.StatusNotFound, "todo_item_not_found", "todo item not found")
 		default:
+			h.log.InternalError("todos.update_item: update todo item failed", err, "user_id", user.ID, "family_id", family.ID, "item_id", itemID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return
@@ -515,18 +543,22 @@ func (h *Handlers) DeleteTodoItem(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("todos.delete_item: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("todos.delete_item: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
 	if err := h.Todos.DeleteTodoItem(r.Context(), family.ID, itemID); err != nil {
 		if errors.Is(err, todosdomain.ErrTodoItemNotFound) {
+			h.log.BusinessError("todos.delete_item: todo item not found", err, "user_id", user.ID, "family_id", family.ID, "item_id", itemID)
 			writeError(w, http.StatusNotFound, "todo_item_not_found", "todo item not found")
 			return
 		}
+		h.log.InternalError("todos.delete_item: delete todo item failed", err, "user_id", user.ID, "family_id", family.ID, "item_id", itemID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}

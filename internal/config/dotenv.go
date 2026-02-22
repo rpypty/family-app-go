@@ -3,16 +3,17 @@ package config
 import (
 	"bufio"
 	"errors"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"family-app-go/pkg/logger"
 )
 
 const dotenvFilename = ".env"
 
-func loadDotEnv() error {
+func loadDotEnv(log logger.Logger) error {
 	path, err := findDotEnv(dotenvFilename)
 	if err != nil {
 		return err
@@ -23,9 +24,9 @@ func loadDotEnv() error {
 		return err
 	}
 
-	log.Printf("dotenv: loaded %d vars from %s", loaded, path)
+	log.Info("dotenv: loaded variables", "count", loaded, "path", path)
 	if skipped > 0 {
-		log.Printf("dotenv: skipped %d vars (already set)", skipped)
+		log.Info("dotenv: skipped variables already set in env", "count", skipped)
 	}
 
 	return nil

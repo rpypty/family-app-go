@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,38 +10,62 @@ import (
 	"time"
 
 	"family-app-go/internal/app"
+	"family-app-go/pkg/logger"
 )
 
 func main() {
-	log.Printf("app: starting")
+	log := logger.NewFromEnv()
+	log.Info("app: starting")
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	application, err := app.New()
+	application, err := app.New(log)
 	if err != nil {
-		log.Fatalf("init app: %v", err)
+		log.Critical("app: init failed", "err", err)
+		os.Exit(1)
 	}
 
 	srv := application.HTTPServer()
-	log.Printf("http: listening on %s", srv.Addr)
+	log.Info("http: listening", "addr", srv.Addr)
+
+	serverErrCh := make(chan error, 1)
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %v", err)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrCh <- err
 		}
+		close(serverErrCh)
 	}()
 
-	<-ctx.Done()
-	log.Printf("app: shutdown signal received")
+	exitCode := 0
+	select {
+	case <-ctx.Done():
+		log.Info("app: shutdown signal received")
+	case err := <-serverErrCh:
+		if err != nil {
+			log.Critical("http: server failed", "addr", srv.Addr, "err", err)
+			exitCode = 1
+		}
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("shutdown: %v", err)
+	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Error("http: graceful shutdown failed", "err", err)
+		exitCode = 1
 	}
 
 	if err := application.Close(); err != nil {
-		log.Printf("close app: %v", err)
+		log.Error("app: close failed", "err", err)
+		exitCode = 1
 	}
+
+	if exitCode == 0 {
+		log.Info("app: stopped")
+		return
+	}
+
+	os.Exit(exitCode)
 }

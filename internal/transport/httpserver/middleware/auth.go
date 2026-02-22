@@ -3,18 +3,19 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"family-app-go/internal/config"
+	"family-app-go/pkg/logger"
 )
 
 type SupabaseAuth struct {
 	baseURL  string
 	apiKey   string
 	client   *http.Client
+	log      logger.Logger
 	profiles ProfileSaver
 	skipAuth bool
 	mockUser User
@@ -49,7 +50,7 @@ type ProfileSaver interface {
 	UpsertProfile(ctx context.Context, userID, email, avatarURL string) error
 }
 
-func NewSupabaseAuth(cfg config.SupabaseConfig, profiles ProfileSaver) *SupabaseAuth {
+func NewSupabaseAuth(cfg config.SupabaseConfig, profiles ProfileSaver, log logger.Logger) *SupabaseAuth {
 	baseURL := strings.TrimRight(cfg.URL, "/")
 	timeout := cfg.AuthTimeout
 	if timeout == 0 {
@@ -62,6 +63,7 @@ func NewSupabaseAuth(cfg config.SupabaseConfig, profiles ProfileSaver) *Supabase
 		client: &http.Client{
 			Timeout: timeout,
 		},
+		log:      log,
 		profiles: profiles,
 		skipAuth: cfg.SkipAuth,
 		mockUser: User{
@@ -75,15 +77,19 @@ func NewSupabaseAuth(cfg config.SupabaseConfig, profiles ProfileSaver) *Supabase
 
 func (a *SupabaseAuth) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestMethod := r.Method
+		requestPath := r.URL.Path
+
 		if a.skipAuth {
 			user := a.mockUser
 			if user.ID == "" {
+				a.log.Error("auth: mock auth user id not configured", "method", requestMethod, "path", requestPath)
 				writeError(w, http.StatusInternalServerError, "auth_not_configured", "auth mock user id not configured")
 				return
 			}
 			if a.profiles != nil {
 				if err := a.profiles.UpsertProfile(r.Context(), user.ID, user.Email, user.AvatarURL); err != nil {
-					log.Printf("auth: upsert profile failed: %v", err)
+					a.log.Warn("auth: upsert profile failed", "user_id", user.ID, "err", err)
 				}
 			}
 			ctx := WithUser(r.Context(), user)
@@ -92,18 +98,40 @@ func (a *SupabaseAuth) Middleware(next http.Handler) http.Handler {
 		}
 
 		if a.baseURL == "" || a.apiKey == "" {
+			a.log.Error(
+				"auth: provider not configured",
+				"method",
+				requestMethod,
+				"path",
+				requestPath,
+				"has_base_url",
+				a.baseURL != "",
+				"has_api_key",
+				a.apiKey != "",
+			)
 			writeError(w, http.StatusInternalServerError, "auth_not_configured", "auth not configured")
 			return
 		}
 
-		token, ok := bearerToken(r.Header.Get("Authorization"))
+		authorizationHeader := r.Header.Get("Authorization")
+		token, ok := bearerToken(authorizationHeader)
 		if !ok {
+			a.log.Warn(
+				"auth: missing or invalid bearer token",
+				"method",
+				requestMethod,
+				"path",
+				requestPath,
+				"has_authorization_header",
+				strings.TrimSpace(authorizationHeader) != "",
+			)
 			unauthorized(w)
 			return
 		}
 
 		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, a.baseURL+"/auth/v1/user", nil)
 		if err != nil {
+			a.log.Error("auth: build supabase auth request failed", "method", requestMethod, "path", requestPath, "err", err)
 			unauthorized(w)
 			return
 		}
@@ -112,24 +140,32 @@ func (a *SupabaseAuth) Middleware(next http.Handler) http.Handler {
 
 		resp, err := a.client.Do(req)
 		if err != nil {
+			a.log.Error("auth: request to supabase failed", "method", requestMethod, "path", requestPath, "err", err)
 			unauthorized(w)
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			if resp.StatusCode >= http.StatusInternalServerError {
+				a.log.Error("auth: supabase auth endpoint error", "method", requestMethod, "path", requestPath, "status_code", resp.StatusCode)
+			} else {
+				a.log.Warn("auth: supabase rejected token", "method", requestMethod, "path", requestPath, "status_code", resp.StatusCode)
+			}
 			unauthorized(w)
 			return
 		}
 
 		var payload userResponse
 		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			a.log.Error("auth: decode supabase auth response failed", "method", requestMethod, "path", requestPath, "err", err)
 			unauthorized(w)
 			return
 		}
 
 		userID := firstNonEmpty(payload.ID, payload.Sub, payload.User.ID, payload.User.Sub)
 		if userID == "" {
+			a.log.Warn("auth: supabase response missing user id", "method", requestMethod, "path", requestPath)
 			unauthorized(w)
 			return
 		}
@@ -143,7 +179,7 @@ func (a *SupabaseAuth) Middleware(next http.Handler) http.Handler {
 
 		if a.profiles != nil {
 			if err := a.profiles.UpsertProfile(r.Context(), user.ID, user.Email, user.AvatarURL); err != nil {
-				log.Printf("auth: upsert profile failed: %v", err)
+				a.log.Warn("auth: upsert profile failed", "user_id", user.ID, "err", err)
 			}
 		}
 

@@ -33,9 +33,11 @@ func (h *Handlers) GetFamilyMe(w http.ResponseWriter, r *http.Request) {
 	result, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("families.get_me: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("families.get_me: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -65,8 +67,10 @@ func (h *Handlers) CreateFamily(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, familydomain.ErrAlreadyInFamily):
+			h.log.BusinessError("families.create: user already in family", err, "user_id", user.ID)
 			writeError(w, http.StatusConflict, "already_in_family", "already in family")
 		default:
+			h.log.InternalError("families.create: create family failed", err, "user_id", user.ID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return
@@ -97,10 +101,13 @@ func (h *Handlers) JoinFamily(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, familydomain.ErrFamilyCodeNotFound):
+			h.log.BusinessError("families.join: family code not found", err, "user_id", user.ID, "code", req.Code)
 			writeError(w, http.StatusNotFound, "family_code_not_found", "family code not found")
 		case errors.Is(err, familydomain.ErrAlreadyInFamily):
+			h.log.BusinessError("families.join: user already in family", err, "user_id", user.ID)
 			writeError(w, http.StatusConflict, "already_in_family", "already in family")
 		default:
+			h.log.InternalError("families.join: join family failed", err, "user_id", user.ID, "code", req.Code)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return
@@ -119,8 +126,10 @@ func (h *Handlers) LeaveFamily(w http.ResponseWriter, r *http.Request) {
 	if err := h.Families.LeaveFamily(r.Context(), user.ID); err != nil {
 		switch {
 		case errors.Is(err, familydomain.ErrFamilyNotFound):
+			h.log.BusinessError("families.leave: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 		default:
+			h.log.InternalError("families.leave: leave family failed", err, "user_id", user.ID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return
@@ -150,9 +159,11 @@ func (h *Handlers) UpdateFamily(w http.ResponseWriter, r *http.Request) {
 	result, err := h.Families.UpdateFamily(r.Context(), user.ID, req.Name)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("families.update: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("families.update: update family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -170,9 +181,11 @@ func (h *Handlers) ListFamilyMembers(w http.ResponseWriter, r *http.Request) {
 	members, err := h.Families.ListMembersWithProfiles(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("families.list_members: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("families.list_members: list members failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -207,14 +220,19 @@ func (h *Handlers) RemoveFamilyMember(w http.ResponseWriter, r *http.Request) {
 	if err := h.Families.RemoveMember(r.Context(), user.ID, memberID); err != nil {
 		switch {
 		case errors.Is(err, familydomain.ErrFamilyNotFound):
+			h.log.BusinessError("families.remove_member: family not found", err, "actor_id", user.ID, "member_id", memberID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 		case errors.Is(err, familydomain.ErrMemberNotFound):
+			h.log.BusinessError("families.remove_member: member not found", err, "actor_id", user.ID, "member_id", memberID)
 			writeError(w, http.StatusNotFound, "member_not_found", "member not found")
 		case errors.Is(err, familydomain.ErrNotOwner):
+			h.log.BusinessError("families.remove_member: actor is not owner", err, "actor_id", user.ID, "member_id", memberID)
 			writeError(w, http.StatusForbidden, "not_owner", "only owner can remove members")
 		case errors.Is(err, familydomain.ErrCannotRemoveOwner):
+			h.log.BusinessError("families.remove_member: cannot remove owner", err, "actor_id", user.ID, "member_id", memberID)
 			writeError(w, http.StatusConflict, "cannot_remove_owner", "cannot remove owner")
 		default:
+			h.log.InternalError("families.remove_member: remove member failed", err, "actor_id", user.ID, "member_id", memberID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return
@@ -236,11 +254,11 @@ type familyResponse struct {
 }
 
 type familyMemberResponse struct {
-	UserID    string     `json:"user_id"`
-	Role      string     `json:"role"`
-	JoinedAt  time.Time  `json:"joined_at"`
-	Email     *string    `json:"email"`
-	AvatarURL *string    `json:"avatar_url"`
+	UserID    string    `json:"user_id"`
+	Role      string    `json:"role"`
+	JoinedAt  time.Time `json:"joined_at"`
+	Email     *string   `json:"email"`
+	AvatarURL *string   `json:"avatar_url"`
 }
 
 func toFamilyResponse(familyModel *familydomain.Family) familyResponse {

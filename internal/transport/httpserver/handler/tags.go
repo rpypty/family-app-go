@@ -30,15 +30,18 @@ func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("tags.list: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("tags.list: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
 	tags, err := h.Expenses.ListTags(r.Context(), family.ID)
 	if err != nil {
+		h.log.InternalError("tags.list: list tags failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -80,15 +83,18 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("tags.create: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("tags.create: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
 	created, err := h.Expenses.CreateTag(r.Context(), family.ID, req.Name)
 	if err != nil {
+		h.log.InternalError("tags.create: create tag failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -116,22 +122,27 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("tags.delete: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("tags.delete: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
 	if err := h.Expenses.DeleteTag(r.Context(), family.ID, tagID); err != nil {
 		if errors.Is(err, expensesdomain.ErrTagNotFound) {
+			h.log.BusinessError("tags.delete: tag not found", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
 			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
 			return
 		}
 		if errors.Is(err, expensesdomain.ErrTagInUse) {
+			h.log.BusinessError("tags.delete: tag is in use", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
 			writeError(w, http.StatusConflict, "tag_in_use", "Tag is used by expenses")
 			return
 		}
+		h.log.InternalError("tags.delete: delete tag failed", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -169,9 +180,11 @@ func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("tags.update: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
+		h.log.InternalError("tags.update: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -180,10 +193,13 @@ func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, expensesdomain.ErrTagNotFound):
+			h.log.BusinessError("tags.update: tag not found", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
 			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
 		case errors.Is(err, expensesdomain.ErrTagNameTaken):
+			h.log.BusinessError("tags.update: tag name already exists", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
 			writeError(w, http.StatusConflict, "tag_name_taken", "Tag name already exists")
 		default:
+			h.log.InternalError("tags.update: update tag failed", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return

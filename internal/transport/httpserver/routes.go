@@ -7,11 +7,12 @@ import (
 	"family-app-go/internal/config"
 	"family-app-go/internal/transport/httpserver/handler"
 	authmw "family-app-go/internal/transport/httpserver/middleware"
+	"family-app-go/pkg/logger"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.ProfileSaver) http.Handler {
+func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.ProfileSaver, log logger.Logger) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
@@ -23,7 +24,7 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.Pr
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", handlers.Health)
 
-		auth := authmw.NewSupabaseAuth(cfg.Supabase, profiles)
+		auth := authmw.NewSupabaseAuth(cfg.Supabase, profiles, log)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware)
 
