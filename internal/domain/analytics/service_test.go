@@ -22,7 +22,7 @@ func (f *fakeAnalyticsRepo) Timeseries(ctx context.Context, familyID string, fil
 	return nil, nil
 }
 
-func (f *fakeAnalyticsRepo) ByTag(ctx context.Context, familyID string, filter ByTagFilter) ([]ByTagRow, error) {
+func (f *fakeAnalyticsRepo) ByCategory(ctx context.Context, familyID string, filter ByCategoryFilter) ([]ByCategoryRow, error) {
 	return nil, nil
 }
 

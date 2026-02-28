@@ -19,7 +19,7 @@ func NewPostgres(db *gorm.DB) *PostgresRepository {
 }
 
 func (r *PostgresRepository) Summary(ctx context.Context, familyID string, filter analyticsdomain.SummaryFilter) (analyticsdomain.SummaryResult, error) {
-	where, args := buildExpenseWhere(familyID, filter.From, filter.To, filter.Currency, filter.TagIDs)
+	where, args := buildExpenseWhere(familyID, filter.From, filter.To, filter.Currency, filter.CategoryIDs)
 	query := "SELECT COALESCE(SUM(e.amount), 0) AS total_amount, COUNT(*) AS count FROM expenses e WHERE " + where
 
 	var row struct {
@@ -35,39 +35,28 @@ func (r *PostgresRepository) Summary(ctx context.Context, familyID string, filte
 }
 
 func (r *PostgresRepository) Timeseries(ctx context.Context, familyID string, filter analyticsdomain.TimeseriesFilter) ([]analyticsdomain.TimeseriesPoint, error) {
-	where, args := buildExpenseWhere(familyID, filter.From, filter.To, filter.Currency, filter.TagIDs)
+	where, args := buildExpenseWhere(familyID, filter.From, filter.To, filter.Currency, filter.CategoryIDs)
 
 	groupBy := strings.ToLower(strings.TrimSpace(filter.GroupBy))
-	format := "YYYY-MM-DD"
-	if groupBy == "month" {
-		format = "YYYY-MM"
-	}
-	if groupBy != "day" && groupBy != "week" && groupBy != "month" {
+	if groupBy != "day" && groupBy != "week" {
 		return nil, fmt.Errorf("invalid group_by")
 	}
 
-	tz := strings.TrimSpace(filter.Timezone)
-	if tz == "" {
-		tz = "UTC"
-	}
-
-	periodExpr := fmt.Sprintf("date_trunc('%s', timezone(?, e.date::timestamp))", groupBy)
-	selectExpr := fmt.Sprintf("to_char(%s, '%s')", periodExpr, format)
-	query := fmt.Sprintf("SELECT %s AS period, COALESCE(SUM(e.amount), 0) AS total, COUNT(*) AS count FROM expenses e WHERE %s GROUP BY %s ORDER BY %s", selectExpr, where, periodExpr, periodExpr)
-
-	queryArgs := []interface{}{tz}
-	queryArgs = append(queryArgs, args...)
-	queryArgs = append(queryArgs, tz)
+	// e.date is a DATE (calendar day). Applying timezone conversion here shifts
+	// bucket boundaries and may move expenses to neighbor days.
+	periodExpr := fmt.Sprintf("date_trunc('%s', e.date::timestamp)", groupBy)
+	selectExpr := fmt.Sprintf("to_char(%s, 'YYYY-MM-DD')", periodExpr)
+	query := fmt.Sprintf("SELECT %s AS period, COALESCE(SUM(e.amount), 0) AS total, COUNT(*) AS count FROM expenses e WHERE %s GROUP BY 1 ORDER BY 1", selectExpr, where)
 
 	var rows []analyticsdomain.TimeseriesPoint
-	if err := r.db.WithContext(ctx).Raw(query, queryArgs...).Scan(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Raw(query, args...).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 
 	return rows, nil
 }
 
-func (r *PostgresRepository) ByTag(ctx context.Context, familyID string, filter analyticsdomain.ByTagFilter) ([]analyticsdomain.ByTagRow, error) {
+func (r *PostgresRepository) ByCategory(ctx context.Context, familyID string, filter analyticsdomain.ByCategoryFilter) ([]analyticsdomain.ByCategoryRow, error) {
 	conditions := []string{"e.family_id = ?", "t.family_id = ?", "e.date >= ?", "e.date <= ?"}
 	args := []interface{}{familyID, familyID, filter.From, filter.To}
 
@@ -75,9 +64,9 @@ func (r *PostgresRepository) ByTag(ctx context.Context, familyID string, filter 
 		conditions = append(conditions, "e.currency = ?")
 		args = append(args, filter.Currency)
 	}
-	if len(filter.TagIDs) > 0 {
+	if len(filter.CategoryIDs) > 0 {
 		conditions = append(conditions, "t.id IN (?)")
-		args = append(args, filter.TagIDs)
+		args = append(args, filter.CategoryIDs)
 	}
 
 	limit := filter.Limit
@@ -85,10 +74,10 @@ func (r *PostgresRepository) ByTag(ctx context.Context, familyID string, filter 
 		limit = 20
 	}
 
-	query := fmt.Sprintf("SELECT t.id AS tag_id, t.name AS tag_name, COALESCE(SUM(e.amount), 0) AS total, COUNT(e.id) AS count FROM tags t JOIN expense_tags et ON et.tag_id = t.id JOIN expenses e ON e.id = et.expense_id WHERE %s GROUP BY t.id, t.name ORDER BY total DESC LIMIT ?", strings.Join(conditions, " AND "))
+	query := fmt.Sprintf("SELECT t.id AS category_id, t.name AS category_name, COALESCE(SUM(e.amount), 0) AS total, COUNT(e.id) AS count FROM categories t JOIN expense_categories et ON et.category_id = t.id JOIN expenses e ON e.id = et.expense_id WHERE %s GROUP BY t.id, t.name ORDER BY total DESC LIMIT ?", strings.Join(conditions, " AND "))
 	args = append(args, limit)
 
-	var rows []analyticsdomain.ByTagRow
+	var rows []analyticsdomain.ByCategoryRow
 	if err := r.db.WithContext(ctx).Raw(query, args...).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -97,7 +86,7 @@ func (r *PostgresRepository) ByTag(ctx context.Context, familyID string, filter 
 }
 
 func (r *PostgresRepository) Monthly(ctx context.Context, familyID string, filter analyticsdomain.MonthlyFilter) ([]analyticsdomain.MonthlyRow, error) {
-	where, args := buildExpenseWhereRange(familyID, filter.From, filter.To, filter.Currency, filter.TagIDs)
+	where, args := buildExpenseWhereRange(familyID, filter.From, filter.To, filter.Currency, filter.CategoryIDs)
 	periodExpr := "date_trunc('month', e.date::timestamp)"
 	selectExpr := "to_char(" + periodExpr + ", 'YYYY-MM')"
 	query := fmt.Sprintf("SELECT %s AS month, COALESCE(SUM(e.amount), 0) AS total, COUNT(*) AS count FROM expenses e WHERE %s GROUP BY %s ORDER BY %s", selectExpr, where, periodExpr, periodExpr)
@@ -110,7 +99,7 @@ func (r *PostgresRepository) Monthly(ctx context.Context, familyID string, filte
 	return rows, nil
 }
 
-func buildExpenseWhere(familyID string, from, to time.Time, currency string, tagIDs []string) (string, []interface{}) {
+func buildExpenseWhere(familyID string, from, to time.Time, currency string, categoryIDs []string) (string, []interface{}) {
 	conditions := []string{"e.family_id = ?", "e.date >= ?", "e.date <= ?"}
 	args := []interface{}{familyID, from, to}
 
@@ -118,15 +107,15 @@ func buildExpenseWhere(familyID string, from, to time.Time, currency string, tag
 		conditions = append(conditions, "e.currency = ?")
 		args = append(args, currency)
 	}
-	if len(tagIDs) > 0 {
-		conditions = append(conditions, "EXISTS (SELECT 1 FROM expense_tags et WHERE et.expense_id = e.id AND et.tag_id IN (?))")
-		args = append(args, tagIDs)
+	if len(categoryIDs) > 0 {
+		conditions = append(conditions, "EXISTS (SELECT 1 FROM expense_categories et WHERE et.expense_id = e.id AND et.category_id IN (?))")
+		args = append(args, categoryIDs)
 	}
 
 	return strings.Join(conditions, " AND "), args
 }
 
-func buildExpenseWhereRange(familyID string, from, to time.Time, currency string, tagIDs []string) (string, []interface{}) {
+func buildExpenseWhereRange(familyID string, from, to time.Time, currency string, categoryIDs []string) (string, []interface{}) {
 	conditions := []string{"e.family_id = ?", "e.date >= ?", "e.date < ?"}
 	args := []interface{}{familyID, from, to}
 
@@ -134,9 +123,9 @@ func buildExpenseWhereRange(familyID string, from, to time.Time, currency string
 		conditions = append(conditions, "e.currency = ?")
 		args = append(args, currency)
 	}
-	if len(tagIDs) > 0 {
-		conditions = append(conditions, "EXISTS (SELECT 1 FROM expense_tags et WHERE et.expense_id = e.id AND et.tag_id IN (?))")
-		args = append(args, tagIDs)
+	if len(categoryIDs) > 0 {
+		conditions = append(conditions, "EXISTS (SELECT 1 FROM expense_categories et WHERE et.expense_id = e.id AND et.category_id IN (?))")
+		args = append(args, categoryIDs)
 	}
 
 	return strings.Join(conditions, " AND "), args

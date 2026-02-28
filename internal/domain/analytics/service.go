@@ -31,8 +31,8 @@ func (s *Service) Timeseries(ctx context.Context, familyID string, filter Timese
 	return s.repo.Timeseries(ctx, familyID, filter)
 }
 
-func (s *Service) ByTag(ctx context.Context, familyID string, filter ByTagFilter) ([]ByTagRow, error) {
-	return s.repo.ByTag(ctx, familyID, filter)
+func (s *Service) ByCategory(ctx context.Context, familyID string, filter ByCategoryFilter) ([]ByCategoryRow, error) {
+	return s.repo.ByCategory(ctx, familyID, filter)
 }
 
 func (s *Service) Monthly(ctx context.Context, familyID string, filter MonthlyFilter) ([]MonthlyRow, error) {
@@ -41,20 +41,20 @@ func (s *Service) Monthly(ctx context.Context, familyID string, filter MonthlyFi
 
 func (s *Service) Compare(ctx context.Context, familyID string, filter CompareFilter) (CompareResult, error) {
 	resultA, err := s.repo.Summary(ctx, familyID, SummaryFilter{
-		From:     filter.FromA,
-		To:       filter.ToA,
-		Currency: filter.Currency,
-		TagIDs:   filter.TagIDs,
+		From:        filter.FromA,
+		To:          filter.ToA,
+		Currency:    filter.Currency,
+		CategoryIDs: filter.CategoryIDs,
 	})
 	if err != nil {
 		return CompareResult{}, err
 	}
 
 	resultB, err := s.repo.Summary(ctx, familyID, SummaryFilter{
-		From:     filter.FromB,
-		To:       filter.ToB,
-		Currency: filter.Currency,
-		TagIDs:   filter.TagIDs,
+		From:        filter.FromB,
+		To:          filter.ToB,
+		Currency:    filter.Currency,
+		CategoryIDs: filter.CategoryIDs,
 	})
 	if err != nil {
 		return CompareResult{}, err

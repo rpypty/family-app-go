@@ -17,14 +17,14 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) ListExpenses(ctx context.Context, familyID string, filter ListFilter) ([]ExpenseWithTags, int64, error) {
+func (s *Service) ListExpenses(ctx context.Context, familyID string, filter ListFilter) ([]ExpenseWithCategories, int64, error) {
 	expenses, total, err := s.repo.ListExpenses(ctx, familyID, filter)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	if len(expenses) == 0 {
-		return []ExpenseWithTags{}, total, nil
+		return []ExpenseWithCategories{}, total, nil
 	}
 
 	expenseIDs := make([]string, 0, len(expenses))
@@ -32,23 +32,23 @@ func (s *Service) ListExpenses(ctx context.Context, familyID string, filter List
 		expenseIDs = append(expenseIDs, expense.ID)
 	}
 
-	tagsByExpense, err := s.repo.GetTagIDsByExpenseIDs(ctx, expenseIDs)
+	categoryIDsByExpense, err := s.repo.GetCategoryIDsByExpenseIDs(ctx, expenseIDs)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	items := make([]ExpenseWithTags, 0, len(expenses))
+	items := make([]ExpenseWithCategories, 0, len(expenses))
 	for _, expense := range expenses {
-		items = append(items, ExpenseWithTags{
-			Expense: expense,
-			TagIDs:  tagsByExpense[expense.ID],
+		items = append(items, ExpenseWithCategories{
+			Expense:     expense,
+			CategoryIDs: categoryIDsByExpense[expense.ID],
 		})
 	}
 
 	return items, total, nil
 }
 
-func (s *Service) CreateExpense(ctx context.Context, input CreateExpenseInput) (*ExpenseWithTags, error) {
+func (s *Service) CreateExpense(ctx context.Context, input CreateExpenseInput) (*ExpenseWithCategories, error) {
 	if err := s.validateInput(input.Currency, input.Title); err != nil {
 		return nil, err
 	}
@@ -68,19 +68,19 @@ func (s *Service) CreateExpense(ctx context.Context, input CreateExpenseInput) (
 		Title:    strings.TrimSpace(input.Title),
 	}
 
-	tagIDs := normalizeTagIDs(input.TagIDs)
-	if err := validateTagIDs(tagIDs); err != nil {
+	categoryIDs := normalizeCategoryIDs(input.CategoryIDs)
+	if err := validateCategoryIDs(categoryIDs); err != nil {
 		return nil, err
 	}
 
 	err = s.repo.Transaction(ctx, func(tx Repository) error {
-		if len(tagIDs) > 0 {
-			count, err := tx.CountTagsByIDs(ctx, input.FamilyID, tagIDs)
+		if len(categoryIDs) > 0 {
+			count, err := tx.CountCategoriesByIDs(ctx, input.FamilyID, categoryIDs)
 			if err != nil {
 				return err
 			}
-			if count != int64(len(tagIDs)) {
-				return ErrTagNotFound
+			if count != int64(len(categoryIDs)) {
+				return ErrCategoryNotFound
 			}
 		}
 
@@ -88,34 +88,34 @@ func (s *Service) CreateExpense(ctx context.Context, input CreateExpenseInput) (
 			return err
 		}
 
-		return tx.ReplaceExpenseTags(ctx, expense.ID, tagIDs)
+		return tx.ReplaceExpenseCategories(ctx, expense.ID, categoryIDs)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &ExpenseWithTags{Expense: expense, TagIDs: tagIDs}, nil
+	return &ExpenseWithCategories{Expense: expense, CategoryIDs: categoryIDs}, nil
 }
 
-func (s *Service) UpdateExpense(ctx context.Context, input UpdateExpenseInput) (*ExpenseWithTags, error) {
+func (s *Service) UpdateExpense(ctx context.Context, input UpdateExpenseInput) (*ExpenseWithCategories, error) {
 	if err := s.validateInput(input.Currency, input.Title); err != nil {
 		return nil, err
 	}
 
-	tagIDs := normalizeTagIDs(input.TagIDs)
-	if err := validateTagIDs(tagIDs); err != nil {
+	categoryIDs := normalizeCategoryIDs(input.CategoryIDs)
+	if err := validateCategoryIDs(categoryIDs); err != nil {
 		return nil, err
 	}
 
 	var updated Expense
 	err := s.repo.Transaction(ctx, func(tx Repository) error {
-		if len(tagIDs) > 0 {
-			count, err := tx.CountTagsByIDs(ctx, input.FamilyID, tagIDs)
+		if len(categoryIDs) > 0 {
+			count, err := tx.CountCategoriesByIDs(ctx, input.FamilyID, categoryIDs)
 			if err != nil {
 				return err
 			}
-			if count != int64(len(tagIDs)) {
-				return ErrTagNotFound
+			if count != int64(len(categoryIDs)) {
+				return ErrCategoryNotFound
 			}
 		}
 
@@ -134,7 +134,7 @@ func (s *Service) UpdateExpense(ctx context.Context, input UpdateExpenseInput) (
 			return err
 		}
 
-		if err := tx.ReplaceExpenseTags(ctx, expense.ID, tagIDs); err != nil {
+		if err := tx.ReplaceExpenseCategories(ctx, expense.ID, categoryIDs); err != nil {
 			return err
 		}
 
@@ -145,7 +145,7 @@ func (s *Service) UpdateExpense(ctx context.Context, input UpdateExpenseInput) (
 		return nil, err
 	}
 
-	return &ExpenseWithTags{Expense: updated, TagIDs: tagIDs}, nil
+	return &ExpenseWithCategories{Expense: updated, CategoryIDs: categoryIDs}, nil
 }
 
 func (s *Service) DeleteExpense(ctx context.Context, familyID, expenseID string) error {
@@ -159,22 +159,22 @@ func (s *Service) DeleteExpense(ctx context.Context, familyID, expenseID string)
 	return nil
 }
 
-func (s *Service) ListTags(ctx context.Context, familyID string) ([]Tag, error) {
-	return s.repo.ListTags(ctx, familyID)
+func (s *Service) ListCategories(ctx context.Context, familyID string) ([]Category, error) {
+	return s.repo.ListCategories(ctx, familyID)
 }
 
-func (s *Service) CreateTag(ctx context.Context, input CreateTagInput) (*Tag, error) {
-	name, err := validateTagName(input.Name)
+func (s *Service) CreateCategory(ctx context.Context, input CreateCategoryInput) (*Category, error) {
+	name, err := validateCategoryName(input.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	color, err := normalizeTagColor(input.Color)
+	color, err := normalizeCategoryColor(input.Color)
 	if err != nil {
 		return nil, err
 	}
 
-	emoji, err := normalizeTagEmoji(input.Emoji)
+	emoji, err := normalizeCategoryEmoji(input.Emoji)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func (s *Service) CreateTag(ctx context.Context, input CreateTagInput) (*Tag, er
 		return nil, err
 	}
 
-	tag := Tag{
+	category := Category{
 		ID:       id,
 		FamilyID: input.FamilyID,
 		Name:     name,
@@ -192,69 +192,69 @@ func (s *Service) CreateTag(ctx context.Context, input CreateTagInput) (*Tag, er
 		Emoji:    emoji,
 	}
 
-	if err := s.repo.CreateTag(ctx, &tag); err != nil {
+	if err := s.repo.CreateCategory(ctx, &category); err != nil {
 		return nil, err
 	}
 
-	return &tag, nil
+	return &category, nil
 }
 
-func (s *Service) UpdateTag(ctx context.Context, input UpdateTagInput) (*Tag, error) {
-	name, err := validateTagName(input.Name)
+func (s *Service) UpdateCategory(ctx context.Context, input UpdateCategoryInput) (*Category, error) {
+	name, err := validateCategoryName(input.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	tag, err := s.repo.GetTagByID(ctx, input.FamilyID, input.TagID)
+	category, err := s.repo.GetCategoryByID(ctx, input.FamilyID, input.CategoryID)
 	if err != nil {
 		return nil, err
 	}
 
-	count, err := s.repo.CountTagsByName(ctx, input.FamilyID, name, tag.ID)
+	count, err := s.repo.CountCategoriesByName(ctx, input.FamilyID, name, category.ID)
 	if err != nil {
 		return nil, err
 	}
 	if count > 0 {
-		return nil, ErrTagNameTaken
+		return nil, ErrCategoryNameTaken
 	}
 
-	tag.Name = name
+	category.Name = name
 	if input.Color.Set {
-		color, err := normalizeTagColor(input.Color.Value)
+		color, err := normalizeCategoryColor(input.Color.Value)
 		if err != nil {
 			return nil, err
 		}
-		tag.Color = color
+		category.Color = color
 	}
 	if input.Emoji.Set {
-		emoji, err := normalizeTagEmoji(input.Emoji.Value)
+		emoji, err := normalizeCategoryEmoji(input.Emoji.Value)
 		if err != nil {
 			return nil, err
 		}
-		tag.Emoji = emoji
+		category.Emoji = emoji
 	}
 
-	if err := s.repo.UpdateTag(ctx, tag); err != nil {
+	if err := s.repo.UpdateCategory(ctx, category); err != nil {
 		return nil, err
 	}
 
-	return tag, nil
+	return category, nil
 }
 
-func (s *Service) DeleteTag(ctx context.Context, familyID, tagID string) error {
-	inUse, err := s.repo.CountExpenseTagsByTagID(ctx, tagID)
+func (s *Service) DeleteCategory(ctx context.Context, familyID, categoryID string) error {
+	inUse, err := s.repo.CountExpenseCategoriesByCategoryID(ctx, categoryID)
 	if err != nil {
 		return err
 	}
 	if inUse > 0 {
-		return ErrTagInUse
+		return ErrCategoryInUse
 	}
-	deleted, err := s.repo.DeleteTag(ctx, familyID, tagID)
+	deleted, err := s.repo.DeleteCategory(ctx, familyID, categoryID)
 	if err != nil {
 		return err
 	}
 	if !deleted {
-		return ErrTagNotFound
+		return ErrCategoryNotFound
 	}
 	return nil
 }
@@ -269,15 +269,15 @@ func (s *Service) validateInput(currency, title string) error {
 	return nil
 }
 
-func normalizeTagIDs(tagIDs []string) []string {
-	if len(tagIDs) == 0 {
+func normalizeCategoryIDs(categoryIDs []string) []string {
+	if len(categoryIDs) == 0 {
 		return nil
 	}
 
-	seen := make(map[string]struct{}, len(tagIDs))
-	result := make([]string, 0, len(tagIDs))
-	for _, tagID := range tagIDs {
-		value := strings.TrimSpace(tagID)
+	seen := make(map[string]struct{}, len(categoryIDs))
+	result := make([]string, 0, len(categoryIDs))
+	for _, categoryID := range categoryIDs {
+		value := strings.TrimSpace(categoryID)
 		if value == "" {
 			continue
 		}
@@ -291,16 +291,16 @@ func normalizeTagIDs(tagIDs []string) []string {
 	return result
 }
 
-func validateTagIDs(tagIDs []string) error {
-	for _, tagID := range tagIDs {
-		if !isUUID(tagID) {
-			return ErrTagNotFound
+func validateCategoryIDs(categoryIDs []string) error {
+	for _, categoryID := range categoryIDs {
+		if !isUUID(categoryID) {
+			return ErrCategoryNotFound
 		}
 	}
 	return nil
 }
 
-func validateTagName(name string) (string, error) {
+func validateCategoryName(name string) (string, error) {
 	const maxLen = 50
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -312,32 +312,32 @@ func validateTagName(name string) (string, error) {
 	return name, nil
 }
 
-var tagColorRegex = regexp.MustCompile(`^#[0-9a-f]{6}$`)
+var categoryColorRegex = regexp.MustCompile(`^#[0-9a-f]{6}$`)
 
-func normalizeTagColor(value *string) (*string, error) {
+func normalizeCategoryColor(value *string) (*string, error) {
 	if value == nil {
 		return nil, nil
 	}
 
 	color := strings.ToLower(strings.TrimSpace(*value))
-	if !tagColorRegex.MatchString(color) {
-		return nil, ErrInvalidTagColor
+	if !categoryColorRegex.MatchString(color) {
+		return nil, ErrInvalidCategoryColor
 	}
 
 	return &color, nil
 }
 
-func normalizeTagEmoji(value *string) (*string, error) {
+func normalizeCategoryEmoji(value *string) (*string, error) {
 	if value == nil {
 		return nil, nil
 	}
 
 	emoji := strings.TrimSpace(*value)
 	if emoji == "" {
-		return nil, ErrInvalidTagEmoji
+		return nil, ErrInvalidCategoryEmoji
 	}
 	if !isSingleEmojiGrapheme(emoji) {
-		return nil, ErrInvalidTagEmoji
+		return nil, ErrInvalidCategoryEmoji
 	}
 
 	return &emoji, nil

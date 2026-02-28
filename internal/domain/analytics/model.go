@@ -3,10 +3,10 @@ package analytics
 import "time"
 
 type SummaryFilter struct {
-	From     time.Time
-	To       time.Time
-	Currency string
-	TagIDs   []string
+	From        time.Time
+	To          time.Time
+	Currency    string
+	CategoryIDs []string
 }
 
 type SummaryResult struct {
@@ -16,12 +16,12 @@ type SummaryResult struct {
 }
 
 type TimeseriesFilter struct {
-	From     time.Time
-	To       time.Time
-	GroupBy  string
-	Currency string
-	TagIDs   []string
-	Timezone string
+	From        time.Time
+	To          time.Time
+	GroupBy     string
+	Currency    string
+	CategoryIDs []string
+	Timezone    string
 }
 
 type TimeseriesPoint struct {
@@ -30,26 +30,26 @@ type TimeseriesPoint struct {
 	Count  int64   `json:"count"`
 }
 
-type ByTagFilter struct {
-	From     time.Time
-	To       time.Time
-	Currency string
-	TagIDs   []string
-	Limit    int
+type ByCategoryFilter struct {
+	From        time.Time
+	To          time.Time
+	Currency    string
+	CategoryIDs []string
+	Limit       int
 }
 
-type ByTagRow struct {
-	TagID   string  `json:"tag_id"`
-	TagName string  `json:"tag_name"`
-	Total   float64 `json:"total"`
-	Count   int64   `json:"count"`
+type ByCategoryRow struct {
+	CategoryID   string  `json:"category_id"`
+	CategoryName string  `json:"category_name"`
+	Total        float64 `json:"total"`
+	Count        int64   `json:"count"`
 }
 
 type MonthlyFilter struct {
-	From     time.Time
-	To       time.Time
-	Currency string
-	TagIDs   []string
+	From        time.Time
+	To          time.Time
+	Currency    string
+	CategoryIDs []string
 }
 
 type MonthlyRow struct {
@@ -59,12 +59,12 @@ type MonthlyRow struct {
 }
 
 type CompareFilter struct {
-	FromA    time.Time
-	ToA      time.Time
-	FromB    time.Time
-	ToB      time.Time
-	Currency string
-	TagIDs   []string
+	FromA       time.Time
+	ToA         time.Time
+	FromB       time.Time
+	ToB         time.Time
+	Currency    string
+	CategoryIDs []string
 }
 
 type PeriodSummary struct {

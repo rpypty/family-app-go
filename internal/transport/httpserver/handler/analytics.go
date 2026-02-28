@@ -47,7 +47,7 @@ func (h *Handlers) AnalyticsSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currency := strings.TrimSpace(query.Get("currency"))
-	tagIDs := parseCSV(query.Get("tag_ids"))
+	categoryIDs := parseCSV(query.Get("category_ids"))
 	_, err = normalizeTimezone(query.Get("timezone"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid timezone")
@@ -55,10 +55,10 @@ func (h *Handlers) AnalyticsSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.Analytics.Summary(r.Context(), family.ID, analyticsdomain.SummaryFilter{
-		From:     from,
-		To:       to,
-		Currency: currency,
-		TagIDs:   tagIDs,
+		From:        from,
+		To:          to,
+		Currency:    currency,
+		CategoryIDs: categoryIDs,
 	})
 	if err != nil {
 		h.log.InternalError("analytics.summary: build summary failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -112,13 +112,13 @@ func (h *Handlers) AnalyticsTimeseries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	groupBy := strings.ToLower(strings.TrimSpace(query.Get("group_by")))
-	if groupBy != "day" && groupBy != "week" && groupBy != "month" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "group_by must be day, week, or month")
+	if groupBy != "day" && groupBy != "week" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "group_by must be day or week")
 		return
 	}
 
 	currency := strings.TrimSpace(query.Get("currency"))
-	tagIDs := parseCSV(query.Get("tag_ids"))
+	categoryIDs := parseCSV(query.Get("category_ids"))
 	tz, err := normalizeTimezone(query.Get("timezone"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "invalid timezone")
@@ -126,12 +126,12 @@ func (h *Handlers) AnalyticsTimeseries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.Analytics.Timeseries(r.Context(), family.ID, analyticsdomain.TimeseriesFilter{
-		From:     from,
-		To:       to,
-		GroupBy:  groupBy,
-		Currency: currency,
-		TagIDs:   tagIDs,
-		Timezone: tz,
+		From:        from,
+		To:          to,
+		GroupBy:     groupBy,
+		Currency:    currency,
+		CategoryIDs: categoryIDs,
+		Timezone:    tz,
 	})
 	if err != nil {
 		h.log.InternalError("analytics.timeseries: build timeseries failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -142,7 +142,7 @@ func (h *Handlers) AnalyticsTimeseries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rows)
 }
 
-func (h *Handlers) AnalyticsByTag(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) AnalyticsByCategory(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
@@ -152,11 +152,11 @@ func (h *Handlers) AnalyticsByTag(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			h.log.BusinessError("analytics.by_tag: family not found", err, "user_id", user.ID)
+			h.log.BusinessError("analytics.by_category: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
-		h.log.InternalError("analytics.by_tag: get family failed", err, "user_id", user.ID)
+		h.log.InternalError("analytics.by_category: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -184,17 +184,17 @@ func (h *Handlers) AnalyticsByTag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currency := strings.TrimSpace(query.Get("currency"))
-	tagIDs := parseCSV(query.Get("tag_ids"))
+	categoryIDs := parseCSV(query.Get("category_ids"))
 
-	rows, err := h.Analytics.ByTag(r.Context(), family.ID, analyticsdomain.ByTagFilter{
-		From:     from,
-		To:       to,
-		Currency: currency,
-		TagIDs:   tagIDs,
-		Limit:    limit,
+	rows, err := h.Analytics.ByCategory(r.Context(), family.ID, analyticsdomain.ByCategoryFilter{
+		From:        from,
+		To:          to,
+		Currency:    currency,
+		CategoryIDs: categoryIDs,
+		Limit:       limit,
 	})
 	if err != nil {
-		h.log.InternalError("analytics.by_tag: build report failed", err, "user_id", user.ID, "family_id", family.ID)
+		h.log.InternalError("analytics.by_category: build report failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -241,13 +241,13 @@ func (h *Handlers) ReportsMonthly(w http.ResponseWriter, r *http.Request) {
 	toExclusive := time.Date(toMonth.Year(), toMonth.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
 
 	currency := strings.TrimSpace(query.Get("currency"))
-	tagIDs := parseCSV(query.Get("tag_ids"))
+	categoryIDs := parseCSV(query.Get("category_ids"))
 
 	rows, err := h.Analytics.Monthly(r.Context(), family.ID, analyticsdomain.MonthlyFilter{
-		From:     from,
-		To:       toExclusive,
-		Currency: currency,
-		TagIDs:   tagIDs,
+		From:        from,
+		To:          toExclusive,
+		Currency:    currency,
+		CategoryIDs: categoryIDs,
 	})
 	if err != nil {
 		h.log.InternalError("reports.monthly: build report failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -305,15 +305,15 @@ func (h *Handlers) ReportsCompare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currency := strings.TrimSpace(query.Get("currency"))
-	tagIDs := parseCSV(query.Get("tag_ids"))
+	categoryIDs := parseCSV(query.Get("category_ids"))
 
 	result, err := h.Analytics.Compare(r.Context(), family.ID, analyticsdomain.CompareFilter{
-		FromA:    fromA,
-		ToA:      toA,
-		FromB:    fromB,
-		ToB:      toB,
-		Currency: currency,
-		TagIDs:   tagIDs,
+		FromA:       fromA,
+		ToA:         toA,
+		FromB:       fromB,
+		ToB:         toB,
+		Currency:    currency,
+		CategoryIDs: categoryIDs,
 	})
 	if err != nil {
 		h.log.InternalError("reports.compare: build report failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -327,7 +327,7 @@ func (h *Handlers) ReportsCompare(w http.ResponseWriter, r *http.Request) {
 func normalizeTimezone(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "UTC", nil
+		return "Europe/Moscow", nil
 	}
 	_, err := time.LoadLocation(value)
 	if err != nil {

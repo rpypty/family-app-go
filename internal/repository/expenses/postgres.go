@@ -30,12 +30,12 @@ func (r *PostgresRepository) ListExpenses(ctx context.Context, familyID string, 
 	if filter.To != nil {
 		query = query.Where("date <= ?", *filter.To)
 	}
-	if len(filter.TagIDs) > 0 {
-		query = query.Joins("join expense_tags on expense_tags.expense_id = expenses.id").Where("expense_tags.tag_id IN ?", filter.TagIDs)
+	if len(filter.CategoryIDs) > 0 {
+		query = query.Joins("join expense_categories on expense_categories.expense_id = expenses.id").Where("expense_categories.category_id IN ?", filter.CategoryIDs)
 	}
 
 	countQuery := query.Session(&gorm.Session{})
-	if len(filter.TagIDs) > 0 {
+	if len(filter.CategoryIDs) > 0 {
 		countQuery = countQuery.Distinct("expenses.id")
 	}
 
@@ -44,7 +44,7 @@ func (r *PostgresRepository) ListExpenses(ctx context.Context, familyID string, 
 		return nil, 0, err
 	}
 
-	if len(filter.TagIDs) > 0 {
+	if len(filter.CategoryIDs) > 0 {
 		query = query.Distinct()
 	}
 
@@ -99,103 +99,103 @@ func (r *PostgresRepository) DeleteExpense(ctx context.Context, familyID, expens
 	return result.RowsAffected > 0, result.Error
 }
 
-func (r *PostgresRepository) ReplaceExpenseTags(ctx context.Context, expenseID string, tagIDs []string) error {
-	if err := r.db.WithContext(ctx).Where("expense_id = ?", expenseID).Delete(&expensesdomain.ExpenseTag{}).Error; err != nil {
+func (r *PostgresRepository) ReplaceExpenseCategories(ctx context.Context, expenseID string, categoryIDs []string) error {
+	if err := r.db.WithContext(ctx).Where("expense_id = ?", expenseID).Delete(&expensesdomain.ExpenseCategory{}).Error; err != nil {
 		return err
 	}
 
-	if len(tagIDs) == 0 {
+	if len(categoryIDs) == 0 {
 		return nil
 	}
 
-	links := make([]expensesdomain.ExpenseTag, 0, len(tagIDs))
-	for _, tagID := range tagIDs {
-		links = append(links, expensesdomain.ExpenseTag{ExpenseID: expenseID, TagID: tagID})
+	links := make([]expensesdomain.ExpenseCategory, 0, len(categoryIDs))
+	for _, categoryID := range categoryIDs {
+		links = append(links, expensesdomain.ExpenseCategory{ExpenseID: expenseID, CategoryID: categoryID})
 	}
 	return r.db.WithContext(ctx).Create(&links).Error
 }
 
-func (r *PostgresRepository) GetTagIDsByExpenseIDs(ctx context.Context, expenseIDs []string) (map[string][]string, error) {
+func (r *PostgresRepository) GetCategoryIDsByExpenseIDs(ctx context.Context, expenseIDs []string) (map[string][]string, error) {
 	result := make(map[string][]string, len(expenseIDs))
 	if len(expenseIDs) == 0 {
 		return result, nil
 	}
 
 	var rows []struct {
-		ExpenseID string `gorm:"column:expense_id"`
-		TagID     string `gorm:"column:tag_id"`
+		ExpenseID  string `gorm:"column:expense_id"`
+		CategoryID string `gorm:"column:category_id"`
 	}
 
 	if err := r.db.WithContext(ctx).
-		Table("expense_tags").
+		Table("expense_categories").
 		Where("expense_id IN ?", expenseIDs).
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
 	for _, row := range rows {
-		result[row.ExpenseID] = append(result[row.ExpenseID], row.TagID)
+		result[row.ExpenseID] = append(result[row.ExpenseID], row.CategoryID)
 	}
 
 	return result, nil
 }
 
-func (r *PostgresRepository) CountTagsByIDs(ctx context.Context, familyID string, tagIDs []string) (int64, error) {
-	if len(tagIDs) == 0 {
+func (r *PostgresRepository) CountCategoriesByIDs(ctx context.Context, familyID string, categoryIDs []string) (int64, error) {
+	if len(categoryIDs) == 0 {
 		return 0, nil
 	}
 	var count int64
 	if err := r.db.WithContext(ctx).
-		Model(&expensesdomain.Tag{}).
-		Where("family_id = ? AND id IN ?", familyID, tagIDs).
+		Model(&expensesdomain.Category{}).
+		Where("family_id = ? AND id IN ?", familyID, categoryIDs).
 		Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func (r *PostgresRepository) ListTags(ctx context.Context, familyID string) ([]expensesdomain.Tag, error) {
-	var tags []expensesdomain.Tag
+func (r *PostgresRepository) ListCategories(ctx context.Context, familyID string) ([]expensesdomain.Category, error) {
+	var categories []expensesdomain.Category
 	if err := r.db.WithContext(ctx).
 		Where("family_id = ?", familyID).
 		Order("created_at asc").
-		Find(&tags).Error; err != nil {
+		Find(&categories).Error; err != nil {
 		return nil, err
 	}
-	return tags, nil
+	return categories, nil
 }
 
-func (r *PostgresRepository) CreateTag(ctx context.Context, tag *expensesdomain.Tag) error {
-	return r.db.WithContext(ctx).Create(tag).Error
+func (r *PostgresRepository) CreateCategory(ctx context.Context, category *expensesdomain.Category) error {
+	return r.db.WithContext(ctx).Create(category).Error
 }
 
-func (r *PostgresRepository) GetTagByID(ctx context.Context, familyID, tagID string) (*expensesdomain.Tag, error) {
-	var tag expensesdomain.Tag
+func (r *PostgresRepository) GetCategoryByID(ctx context.Context, familyID, categoryID string) (*expensesdomain.Category, error) {
+	var category expensesdomain.Category
 	if err := r.db.WithContext(ctx).
-		Where("family_id = ? AND id = ?", familyID, tagID).
-		First(&tag).Error; err != nil {
+		Where("family_id = ? AND id = ?", familyID, categoryID).
+		First(&category).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, expensesdomain.ErrTagNotFound
+			return nil, expensesdomain.ErrCategoryNotFound
 		}
 		return nil, err
 	}
-	return &tag, nil
+	return &category, nil
 }
 
-func (r *PostgresRepository) UpdateTag(ctx context.Context, tag *expensesdomain.Tag) error {
+func (r *PostgresRepository) UpdateCategory(ctx context.Context, category *expensesdomain.Category) error {
 	return r.db.WithContext(ctx).
-		Model(&expensesdomain.Tag{}).
-		Where("id = ? AND family_id = ?", tag.ID, tag.FamilyID).
+		Model(&expensesdomain.Category{}).
+		Where("id = ? AND family_id = ?", category.ID, category.FamilyID).
 		Updates(map[string]interface{}{
-			"name":  tag.Name,
-			"color": tag.Color,
-			"emoji": tag.Emoji,
+			"name":  category.Name,
+			"color": category.Color,
+			"emoji": category.Emoji,
 		}).Error
 }
 
-func (r *PostgresRepository) CountTagsByName(ctx context.Context, familyID, name, excludeID string) (int64, error) {
+func (r *PostgresRepository) CountCategoriesByName(ctx context.Context, familyID, name, excludeID string) (int64, error) {
 	query := r.db.WithContext(ctx).
-		Model(&expensesdomain.Tag{}).
+		Model(&expensesdomain.Category{}).
 		Where("family_id = ? AND lower(name) = lower(?)", familyID, name)
 	if excludeID != "" {
 		query = query.Where("id <> ?", excludeID)
@@ -207,16 +207,16 @@ func (r *PostgresRepository) CountTagsByName(ctx context.Context, familyID, name
 	return count, nil
 }
 
-func (r *PostgresRepository) DeleteTag(ctx context.Context, familyID, tagID string) (bool, error) {
-	result := r.db.WithContext(ctx).Delete(&expensesdomain.Tag{}, "family_id = ? AND id = ?", familyID, tagID)
+func (r *PostgresRepository) DeleteCategory(ctx context.Context, familyID, categoryID string) (bool, error) {
+	result := r.db.WithContext(ctx).Delete(&expensesdomain.Category{}, "family_id = ? AND id = ?", familyID, categoryID)
 	return result.RowsAffected > 0, result.Error
 }
 
-func (r *PostgresRepository) CountExpenseTagsByTagID(ctx context.Context, tagID string) (int64, error) {
+func (r *PostgresRepository) CountExpenseCategoriesByCategoryID(ctx context.Context, categoryID string) (int64, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).
-		Model(&expensesdomain.ExpenseTag{}).
-		Where("tag_id = ?", tagID).
+		Model(&expensesdomain.ExpenseCategory{}).
+		Where("category_id = ?", categoryID).
 		Count(&count).Error; err != nil {
 		return 0, err
 	}

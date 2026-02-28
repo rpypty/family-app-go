@@ -1,0 +1,32 @@
+name: billsplitter-infra
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: billsplitter-db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: bill_splitter
+      # опционально, чтобы клиентам было проще:
+      # PGDATA: /var/lib/postgresql/data/pgdata
+
+    ports:
+      - "127.0.0.1:55433:5432"
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # если включишь PGDATA выше, то лучше так:
+      # - pgdata:/var/lib/postgresql/data/pgdata
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1 -p 5432"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  pgdata:

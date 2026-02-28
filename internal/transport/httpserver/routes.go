@@ -35,7 +35,7 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.Pr
 
 			r.Get("/analytics/summary", handlers.AnalyticsSummary)
 			r.Get("/analytics/timeseries", handlers.AnalyticsTimeseries)
-			r.Get("/analytics/by-tag", handlers.AnalyticsByTag)
+			r.Get("/analytics/by-category", handlers.AnalyticsByCategory)
 			r.Get("/reports/monthly", handlers.ReportsMonthly)
 			r.Get("/reports/compare", handlers.ReportsCompare)
 
@@ -52,10 +52,10 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.Pr
 			r.Put("/expenses/{id}", handlers.UpdateExpense)
 			r.Delete("/expenses/{id}", handlers.DeleteExpense)
 
-			r.Get("/tags", handlers.ListTags)
-			r.Post("/tags", handlers.CreateTag)
-			r.Patch("/tags/{id}", handlers.UpdateTag)
-			r.Delete("/tags/{id}", handlers.DeleteTag)
+			r.Get("/categories", handlers.ListCategories)
+			r.Post("/categories", handlers.CreateCategory)
+			r.Patch("/categories/{id}", handlers.UpdateCategory)
+			r.Delete("/categories/{id}", handlers.DeleteCategory)
 
 			r.Get("/todo-lists", handlers.ListTodoLists)
 			r.Post("/todo-lists", handlers.CreateTodoList)

@@ -135,7 +135,7 @@ func newAuthServer(t *testing.T) *httptest.Server {
 
 func cleanDB(dbConn *gorm.DB) error {
 	return dbConn.WithContext(context.Background()).Exec(
-		"TRUNCATE TABLE expense_tags, expenses, tags, family_members, families, user_profiles RESTART IDENTITY CASCADE",
+		"TRUNCATE TABLE expense_categories, expenses, categories, family_members, families, user_profiles RESTART IDENTITY CASCADE",
 	).Error
 }
 
@@ -231,16 +231,16 @@ type familyMemberResponse struct {
 }
 
 type expenseResponse struct {
-	ID        string    `json:"id"`
-	FamilyID  string    `json:"family_id"`
-	UserID    string    `json:"user_id"`
-	Date      string    `json:"date"`
-	Amount    float64   `json:"amount"`
-	Currency  string    `json:"currency"`
-	Title     string    `json:"title"`
-	TagIDs    []string  `json:"tag_ids"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          string    `json:"id"`
+	FamilyID    string    `json:"family_id"`
+	UserID      string    `json:"user_id"`
+	Date        string    `json:"date"`
+	Amount      float64   `json:"amount"`
+	Currency    string    `json:"currency"`
+	Title       string    `json:"title"`
+	CategoryIDs []string  `json:"category_ids"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type expenseListResponse struct {
@@ -248,7 +248,7 @@ type expenseListResponse struct {
 	Total int64             `json:"total"`
 }
 
-type tagResponse struct {
+type categoryResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Color     *string   `json:"color"`
@@ -369,7 +369,7 @@ func TestE2EFamilyFlow(t *testing.T) {
 	}
 }
 
-func TestE2EExpensesAndTagsFlow(t *testing.T) {
+func TestE2EExpensesAndCategoriesFlow(t *testing.T) {
 	env := setupE2E(t)
 	defer env.Close()
 
@@ -385,17 +385,17 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 	}
 
 	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/expenses", user1, map[string]interface{}{
-		"date":     "2026-02-05",
-		"amount":   12.5,
-		"currency": "BYN",
-		"title":    "Coffee",
-		"tag_ids":  []string{"missing"},
+		"date":         "2026-02-05",
+		"amount":       12.5,
+		"currency":     "BYN",
+		"title":        "Coffee",
+		"category_ids": []string{"missing"},
 	})
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", resp.StatusCode, string(body))
 	}
 
-	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/tags", user1, map[string]interface{}{
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/categories", user1, map[string]interface{}{
 		"name":  "Food",
 		"color": "#AABBCC",
 		"emoji": "🙂",
@@ -403,18 +403,18 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
 	}
-	var tag tagResponse
-	if err := json.Unmarshal(body, &tag); err != nil {
-		t.Fatalf("decode tag: %v", err)
+	var category categoryResponse
+	if err := json.Unmarshal(body, &category); err != nil {
+		t.Fatalf("decode category: %v", err)
 	}
-	if tag.Color == nil || *tag.Color != "#aabbcc" {
-		t.Fatalf("expected normalized color, got %+v", tag.Color)
+	if category.Color == nil || *category.Color != "#aabbcc" {
+		t.Fatalf("expected normalized color, got %+v", category.Color)
 	}
-	if tag.Emoji == nil || *tag.Emoji != "🙂" {
-		t.Fatalf("expected emoji, got %+v", tag.Emoji)
+	if category.Emoji == nil || *category.Emoji != "🙂" {
+		t.Fatalf("expected emoji, got %+v", category.Emoji)
 	}
 
-	resp, body = requestJSON(t, client, http.MethodPatch, env.server.URL+"/tags/"+tag.ID, user1, map[string]interface{}{
+	resp, body = requestJSON(t, client, http.MethodPatch, env.server.URL+"/categories/"+category.ID, user1, map[string]interface{}{
 		"name":  "Food Updated",
 		"color": "#00FF11",
 		"emoji": "❤️",
@@ -422,20 +422,20 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
 	}
-	if err := json.Unmarshal(body, &tag); err != nil {
-		t.Fatalf("decode updated tag: %v", err)
+	if err := json.Unmarshal(body, &category); err != nil {
+		t.Fatalf("decode updated category: %v", err)
 	}
-	if tag.Name != "Food Updated" {
-		t.Fatalf("expected updated name, got %q", tag.Name)
+	if category.Name != "Food Updated" {
+		t.Fatalf("expected updated name, got %q", category.Name)
 	}
-	if tag.Color == nil || *tag.Color != "#00ff11" {
-		t.Fatalf("expected normalized color, got %+v", tag.Color)
+	if category.Color == nil || *category.Color != "#00ff11" {
+		t.Fatalf("expected normalized color, got %+v", category.Color)
 	}
-	if tag.Emoji == nil || *tag.Emoji != "❤️" {
-		t.Fatalf("expected emoji, got %+v", tag.Emoji)
+	if category.Emoji == nil || *category.Emoji != "❤️" {
+		t.Fatalf("expected emoji, got %+v", category.Emoji)
 	}
 
-	resp, body = requestJSON(t, client, http.MethodPatch, env.server.URL+"/tags/"+tag.ID, user1, map[string]interface{}{
+	resp, body = requestJSON(t, client, http.MethodPatch, env.server.URL+"/categories/"+category.ID, user1, map[string]interface{}{
 		"name":  "Food Updated",
 		"color": nil,
 		"emoji": nil,
@@ -443,32 +443,32 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
 	}
-	if err := json.Unmarshal(body, &tag); err != nil {
-		t.Fatalf("decode cleared tag: %v", err)
+	if err := json.Unmarshal(body, &category); err != nil {
+		t.Fatalf("decode cleared category: %v", err)
 	}
-	if tag.Color != nil {
-		t.Fatalf("expected nil color, got %+v", tag.Color)
+	if category.Color != nil {
+		t.Fatalf("expected nil color, got %+v", category.Color)
 	}
-	if tag.Emoji != nil {
-		t.Fatalf("expected nil emoji, got %+v", tag.Emoji)
+	if category.Emoji != nil {
+		t.Fatalf("expected nil emoji, got %+v", category.Emoji)
 	}
 
-	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/tags", user1, nil)
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/categories", user1, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
 	}
-	var tags []tagResponse
-	if err := json.Unmarshal(body, &tags); err != nil {
-		t.Fatalf("decode tags list: %v", err)
+	var categories []categoryResponse
+	if err := json.Unmarshal(body, &categories); err != nil {
+		t.Fatalf("decode categories list: %v", err)
 	}
-	if len(tags) != 1 {
-		t.Fatalf("expected 1 tag, got %d", len(tags))
+	if len(categories) != 1 {
+		t.Fatalf("expected 1 category, got %d", len(categories))
 	}
-	if tags[0].Color != nil || tags[0].Emoji != nil {
-		t.Fatalf("expected cleared color/emoji, got color=%+v emoji=%+v", tags[0].Color, tags[0].Emoji)
+	if categories[0].Color != nil || categories[0].Emoji != nil {
+		t.Fatalf("expected cleared color/emoji, got color=%+v emoji=%+v", categories[0].Color, categories[0].Emoji)
 	}
 
-	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/tags", user1, map[string]interface{}{
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/categories", user1, map[string]interface{}{
 		"name":  "Invalid Color",
 		"color": "#12GG34",
 	})
@@ -476,7 +476,7 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 		t.Fatalf("expected 400 for invalid color, got %d: %s", resp.StatusCode, string(body))
 	}
 
-	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/tags", user1, map[string]interface{}{
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/categories", user1, map[string]interface{}{
 		"name":  "Invalid Emoji",
 		"emoji": "ab",
 	})
@@ -485,11 +485,11 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 	}
 
 	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/expenses", user1, map[string]interface{}{
-		"date":     "2026-02-05",
-		"amount":   12.5,
-		"currency": "BYN",
-		"title":    "Coffee",
-		"tag_ids":  []string{tag.ID},
+		"date":         "2026-02-05",
+		"amount":       12.5,
+		"currency":     "BYN",
+		"title":        "Coffee",
+		"category_ids": []string{category.ID},
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
@@ -499,7 +499,7 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 		t.Fatalf("decode expense: %v", err)
 	}
 
-	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/expenses?tag_id="+tag.ID, user1, nil)
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/expenses?category_id="+category.ID, user1, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
 	}
@@ -512,11 +512,11 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 	}
 
 	resp, body = requestJSON(t, client, http.MethodPut, env.server.URL+"/expenses/"+expense.ID, user1, map[string]interface{}{
-		"date":     "2026-02-05",
-		"amount":   10.0,
-		"currency": "USD",
-		"title":    "Coffee 2",
-		"tag_ids":  []string{tag.ID},
+		"date":         "2026-02-05",
+		"amount":       10.0,
+		"currency":     "USD",
+		"title":        "Coffee 2",
+		"category_ids": []string{category.ID},
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
@@ -532,12 +532,12 @@ func TestE2EExpensesAndTagsFlow(t *testing.T) {
 		t.Fatalf("expected 404, got %d: %s", resp.StatusCode, string(body))
 	}
 
-	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/tags/"+tag.ID, user1, nil)
+	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/categories/"+category.ID, user1, nil)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d: %s", resp.StatusCode, string(body))
 	}
 
-	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/tags/"+tag.ID, user1, nil)
+	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/categories/"+category.ID, user1, nil)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", resp.StatusCode, string(body))
 	}

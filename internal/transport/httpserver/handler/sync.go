@@ -201,11 +201,11 @@ func parseSyncOperation(operation syncOperationRequest) (syncdomain.OperationInp
 		}
 
 		result.CreateExpense = &syncdomain.CreateExpensePayload{
-			Date:     date,
-			Amount:   payload.Amount,
-			Currency: payload.Currency,
-			Title:    payload.Title,
-			TagIDs:   payload.TagIDs,
+			Date:        date,
+			Amount:      payload.Amount,
+			Currency:    payload.Currency,
+			Title:       payload.Title,
+			CategoryIDs: payload.CategoryIDs,
 		}
 		return result, nil
 

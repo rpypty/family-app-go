@@ -13,19 +13,19 @@ import (
 )
 
 type createExpenseRequest struct {
-	Date     string   `json:"date"`
-	Amount   float64  `json:"amount"`
-	Currency string   `json:"currency"`
-	Title    string   `json:"title"`
-	TagIDs   []string `json:"tag_ids"`
+	Date        string   `json:"date"`
+	Amount      float64  `json:"amount"`
+	Currency    string   `json:"currency"`
+	Title       string   `json:"title"`
+	CategoryIDs []string `json:"category_ids"`
 }
 
 type updateExpenseRequest struct {
-	Date     string   `json:"date"`
-	Amount   float64  `json:"amount"`
-	Currency string   `json:"currency"`
-	Title    string   `json:"title"`
-	TagIDs   []string `json:"tag_ids"`
+	Date        string   `json:"date"`
+	Amount      float64  `json:"amount"`
+	Currency    string   `json:"currency"`
+	Title       string   `json:"title"`
+	CategoryIDs []string `json:"category_ids"`
 }
 
 func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
@@ -76,13 +76,13 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 		Limit:  limit,
 		Offset: offset,
 	}
-	tagIDs := parseCSV(query.Get("tag_ids"))
-	if len(tagIDs) > 0 {
-		filter.TagIDs = tagIDs
+	categoryIDs := parseCSV(query.Get("category_ids"))
+	if len(categoryIDs) > 0 {
+		filter.CategoryIDs = categoryIDs
 	} else {
-		tagID := strings.TrimSpace(query.Get("tag_id"))
-		if tagID != "" {
-			filter.TagIDs = []string{tagID}
+		categoryID := strings.TrimSpace(query.Get("category_id"))
+		if categoryID != "" {
+			filter.CategoryIDs = []string{categoryID}
 		}
 	}
 
@@ -148,20 +148,20 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := expensesdomain.CreateExpenseInput{
-		FamilyID: family.ID,
-		UserID:   user.ID,
-		Date:     date,
-		Amount:   req.Amount,
-		Currency: req.Currency,
-		Title:    req.Title,
-		TagIDs:   req.TagIDs,
+		FamilyID:    family.ID,
+		UserID:      user.ID,
+		Date:        date,
+		Amount:      req.Amount,
+		Currency:    req.Currency,
+		Title:       req.Title,
+		CategoryIDs: req.CategoryIDs,
 	}
 
 	created, err := h.Expenses.CreateExpense(r.Context(), input)
 	if err != nil {
-		if errors.Is(err, expensesdomain.ErrTagNotFound) {
-			h.log.BusinessError("expenses.create: tag not found", err, "user_id", user.ID, "family_id", family.ID)
-			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
+		if errors.Is(err, expensesdomain.ErrCategoryNotFound) {
+			h.log.BusinessError("expenses.create: category not found", err, "user_id", user.ID, "family_id", family.ID)
+			writeError(w, http.StatusNotFound, "category_not_found", "category not found")
 			return
 		}
 		h.log.InternalError("expenses.create: create expense failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -222,13 +222,13 @@ func (h *Handlers) UpdateExpense(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := expensesdomain.UpdateExpenseInput{
-		ID:       expenseID,
-		FamilyID: family.ID,
-		Date:     date,
-		Amount:   req.Amount,
-		Currency: req.Currency,
-		Title:    req.Title,
-		TagIDs:   req.TagIDs,
+		ID:          expenseID,
+		FamilyID:    family.ID,
+		Date:        date,
+		Amount:      req.Amount,
+		Currency:    req.Currency,
+		Title:       req.Title,
+		CategoryIDs: req.CategoryIDs,
 	}
 
 	updated, err := h.Expenses.UpdateExpense(r.Context(), input)
@@ -237,9 +237,9 @@ func (h *Handlers) UpdateExpense(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, expensesdomain.ErrExpenseNotFound):
 			h.log.BusinessError("expenses.update: expense not found", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
 			writeError(w, http.StatusNotFound, "expense_not_found", "expense not found")
-		case errors.Is(err, expensesdomain.ErrTagNotFound):
-			h.log.BusinessError("expenses.update: tag not found", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
-			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
+		case errors.Is(err, expensesdomain.ErrCategoryNotFound):
+			h.log.BusinessError("expenses.update: category not found", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
+			writeError(w, http.StatusNotFound, "category_not_found", "category not found")
 		default:
 			h.log.InternalError("expenses.update: update expense failed", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -290,16 +290,16 @@ func (h *Handlers) DeleteExpense(w http.ResponseWriter, r *http.Request) {
 }
 
 type expenseResponse struct {
-	ID        string    `json:"id"`
-	FamilyID  string    `json:"family_id"`
-	UserID    string    `json:"user_id"`
-	Date      string    `json:"date"`
-	Amount    float64   `json:"amount"`
-	Currency  string    `json:"currency"`
-	Title     string    `json:"title"`
-	TagIDs    []string  `json:"tag_ids"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          string    `json:"id"`
+	FamilyID    string    `json:"family_id"`
+	UserID      string    `json:"user_id"`
+	Date        string    `json:"date"`
+	Amount      float64   `json:"amount"`
+	Currency    string    `json:"currency"`
+	Title       string    `json:"title"`
+	CategoryIDs []string  `json:"category_ids"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type expenseListResponse struct {
@@ -307,17 +307,17 @@ type expenseListResponse struct {
 	Total int64             `json:"total"`
 }
 
-func toExpenseResponse(expense expensesdomain.ExpenseWithTags) expenseResponse {
+func toExpenseResponse(expense expensesdomain.ExpenseWithCategories) expenseResponse {
 	return expenseResponse{
-		ID:        expense.ID,
-		FamilyID:  expense.FamilyID,
-		UserID:    expense.UserID,
-		Date:      expense.Date.Format("2006-01-02"),
-		Amount:    expense.Amount,
-		Currency:  expense.Currency,
-		Title:     expense.Title,
-		TagIDs:    expense.TagIDs,
-		CreatedAt: expense.CreatedAt,
-		UpdatedAt: expense.UpdatedAt,
+		ID:          expense.ID,
+		FamilyID:    expense.FamilyID,
+		UserID:      expense.UserID,
+		Date:        expense.Date.Format("2006-01-02"),
+		Amount:      expense.Amount,
+		Currency:    expense.Currency,
+		Title:       expense.Title,
+		CategoryIDs: expense.CategoryIDs,
+		CreatedAt:   expense.CreatedAt,
+		UpdatedAt:   expense.UpdatedAt,
 	}
 }

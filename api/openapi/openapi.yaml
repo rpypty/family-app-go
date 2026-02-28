@@ -95,7 +95,7 @@ paths:
           schema:
             type: string
         - in: query
-          name: tag_ids
+          name: category_ids
           schema:
             type: string
         - in: query
@@ -132,19 +132,20 @@ paths:
           required: true
           schema:
             type: string
-            enum: [day, week, month]
+            enum: [day, week]
         - in: query
           name: currency
           schema:
             type: string
         - in: query
-          name: tag_ids
+          name: category_ids
           schema:
             type: string
         - in: query
           name: timezone
           schema:
             type: string
+            default: Europe/Moscow
       responses:
         '200':
           description: OK
@@ -154,9 +155,9 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/AnalyticsTimeseriesPoint'
-  /analytics/by-tag:
+  /analytics/by-category:
     get:
-      summary: Analytics by tag
+      summary: Analytics by category
       security:
         - bearerAuth: []
       parameters:
@@ -177,7 +178,7 @@ paths:
           schema:
             type: string
         - in: query
-          name: tag_ids
+          name: category_ids
           schema:
             type: string
         - in: query
@@ -193,7 +194,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/AnalyticsByTagRow'
+                  $ref: '#/components/schemas/AnalyticsByCategoryRow'
   /reports/monthly:
     get:
       summary: Monthly report
@@ -215,7 +216,7 @@ paths:
           schema:
             type: string
         - in: query
-          name: tag_ids
+          name: category_ids
           schema:
             type: string
       responses:
@@ -262,7 +263,7 @@ paths:
           schema:
             type: string
         - in: query
-          name: tag_ids
+          name: category_ids
           schema:
             type: string
       responses:
@@ -406,15 +407,15 @@ paths:
             type: string
             format: date
         - in: query
-          name: tag_id
+          name: category_id
           schema:
             type: string
-          description: Single tag id filter. Ignored if tag_ids is provided.
+          description: Single category id filter. Ignored if category_ids is provided.
         - in: query
-          name: tag_ids
+          name: category_ids
           schema:
             type: string
-          description: Comma-separated list of tag ids. Matches expenses with any of the tags.
+          description: Comma-separated list of category ids. Matches expenses with any of the categories.
         - in: query
           name: limit
           schema:
@@ -486,9 +487,9 @@ paths:
       responses:
         '204':
           description: No Content
-  /tags:
+  /categories:
     get:
-      summary: List tags
+      summary: List categories
       security:
         - bearerAuth: []
       responses:
@@ -499,9 +500,9 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Tag'
+                  $ref: '#/components/schemas/Category'
     post:
-      summary: Create tag
+      summary: Create category
       security:
         - bearerAuth: []
       requestBody:
@@ -509,7 +510,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateTagRequest'
+              $ref: '#/components/schemas/CreateCategoryRequest'
       responses:
         '400':
           $ref: '#/components/responses/InvalidRequest'
@@ -518,10 +519,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Tag'
-  /tags/{id}:
+                $ref: '#/components/schemas/Category'
+  /categories/{id}:
     patch:
-      summary: Update tag
+      summary: Update category
       security:
         - bearerAuth: []
       parameters:
@@ -535,7 +536,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateTagRequest'
+              $ref: '#/components/schemas/UpdateCategoryRequest'
       responses:
         '400':
           $ref: '#/components/responses/InvalidRequest'
@@ -544,13 +545,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Tag'
+                $ref: '#/components/schemas/Category'
         '404':
-          $ref: '#/components/responses/TagNotFound'
+          $ref: '#/components/responses/CategoryNotFound'
         '409':
-          $ref: '#/components/responses/TagNameTaken'
+          $ref: '#/components/responses/CategoryNameTaken'
     delete:
-      summary: Delete tag
+      summary: Delete category
       security:
         - bearerAuth: []
       parameters:
@@ -563,9 +564,9 @@ paths:
         '204':
           description: No Content
         '404':
-          $ref: '#/components/responses/TagNotFound'
+          $ref: '#/components/responses/CategoryNotFound'
         '409':
-          $ref: '#/components/responses/TagInUse'
+          $ref: '#/components/responses/CategoryInUse'
   /todo-lists:
     get:
       summary: List todo lists
@@ -1164,36 +1165,36 @@ components:
             error:
               code: todo_item_not_found
               message: Todo item not found
-    TagNotFound:
-      description: Tag not found
+    CategoryNotFound:
+      description: Category not found
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
             error:
-              code: tag_not_found
-              message: Tag not found
-    TagInUse:
-      description: Tag is used by expenses
+              code: category_not_found
+              message: Category not found
+    CategoryInUse:
+      description: Category is used by expenses
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
             error:
-              code: tag_in_use
-              message: Tag is used by expenses
-    TagNameTaken:
-      description: Tag name already exists
+              code: category_in_use
+              message: Category is used by expenses
+    CategoryNameTaken:
+      description: Category name already exists
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
             error:
-              code: tag_name_taken
-              message: Tag name already exists
+              code: category_name_taken
+              message: Category name already exists
     GymEntryNotFound:
       description: Gym entry not found
       content:
@@ -1416,7 +1417,7 @@ components:
         - unsupported_operation_type
         - operation_payload_mismatch
         - dependency_not_resolved
-        - tag_not_found
+        - category_not_found
         - todo_list_not_found
         - todo_item_not_found
         - family_not_found
@@ -1474,7 +1475,7 @@ components:
           nullable: true
     Expense:
       type: object
-      required: [id, family_id, user_id, date, amount, currency, title, tag_ids, created_at, updated_at]
+      required: [id, family_id, user_id, date, amount, currency, title, category_ids, created_at, updated_at]
       properties:
         id:
           type: string
@@ -1491,7 +1492,7 @@ components:
           type: string
         title:
           type: string
-        tag_ids:
+        category_ids:
           type: array
           items:
             type: string
@@ -1511,7 +1512,7 @@ components:
             $ref: '#/components/schemas/Expense'
         total:
           type: integer
-    Tag:
+    Category:
       type: object
       required: [id, name, created_at]
       properties:
@@ -1776,13 +1777,13 @@ components:
           type: number
         count:
           type: integer
-    AnalyticsByTagRow:
+    AnalyticsByCategoryRow:
       type: object
-      required: [tag_id, tag_name, total, count]
+      required: [category_id, category_name, total, count]
       properties:
-        tag_id:
+        category_id:
           type: string
-        tag_name:
+        category_name:
           type: string
         total:
           type: number
@@ -1861,7 +1862,7 @@ components:
           type: string
         title:
           type: string
-        tag_ids:
+        category_ids:
           type: array
           items:
             type: string
@@ -1878,11 +1879,11 @@ components:
           type: string
         title:
           type: string
-        tag_ids:
+        category_ids:
           type: array
           items:
             type: string
-    CreateTagRequest:
+    CreateCategoryRequest:
       type: object
       required: [name]
       properties:
@@ -1895,7 +1896,7 @@ components:
         emoji:
           type: string
           nullable: true
-    UpdateTagRequest:
+    UpdateCategoryRequest:
       type: object
       required: [name]
       properties:

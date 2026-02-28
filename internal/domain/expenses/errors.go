@@ -3,10 +3,10 @@ package expenses
 import "errors"
 
 var (
-	ErrExpenseNotFound = errors.New("expense not found")
-	ErrTagNotFound     = errors.New("tag not found")
-	ErrTagInUse        = errors.New("tag in use")
-	ErrTagNameTaken    = errors.New("tag name already exists")
-	ErrInvalidTagColor = errors.New("invalid tag color")
-	ErrInvalidTagEmoji = errors.New("invalid tag emoji")
+	ErrExpenseNotFound      = errors.New("expense not found")
+	ErrCategoryNotFound     = errors.New("category not found")
+	ErrCategoryInUse        = errors.New("category in use")
+	ErrCategoryNameTaken    = errors.New("category name already exists")
+	ErrInvalidCategoryColor = errors.New("invalid category color")
+	ErrInvalidCategoryEmoji = errors.New("invalid category emoji")
 )
