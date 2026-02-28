@@ -14,7 +14,7 @@ type Expense struct {
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }
 
-type Tag struct {
+type Category struct {
 	ID        string    `gorm:"type:uuid;primaryKey"`
 	FamilyID  string    `gorm:"type:uuid;index;not null"`
 	Name      string    `gorm:"not null"`
@@ -23,45 +23,45 @@ type Tag struct {
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 }
 
-type ExpenseTag struct {
-	ExpenseID string `gorm:"type:uuid;primaryKey"`
-	TagID     string `gorm:"type:uuid;primaryKey"`
+type ExpenseCategory struct {
+	ExpenseID  string `gorm:"type:uuid;primaryKey"`
+	CategoryID string `gorm:"type:uuid;primaryKey"`
 }
 
-type ExpenseWithTags struct {
+type ExpenseWithCategories struct {
 	Expense
-	TagIDs []string
+	CategoryIDs []string
 }
 
 type ListFilter struct {
-	From   *time.Time
-	To     *time.Time
-	TagIDs []string
-	Limit  int
-	Offset int
+	From        *time.Time
+	To          *time.Time
+	CategoryIDs []string
+	Limit       int
+	Offset      int
 }
 
 type CreateExpenseInput struct {
-	FamilyID string
-	UserID   string
-	Date     time.Time
-	Amount   float64
-	Currency string
-	Title    string
-	TagIDs   []string
+	FamilyID    string
+	UserID      string
+	Date        time.Time
+	Amount      float64
+	Currency    string
+	Title       string
+	CategoryIDs []string
 }
 
 type UpdateExpenseInput struct {
-	ID       string
-	FamilyID string
-	Date     time.Time
-	Amount   float64
-	Currency string
-	Title    string
-	TagIDs   []string
+	ID          string
+	FamilyID    string
+	Date        time.Time
+	Amount      float64
+	Currency    string
+	Title       string
+	CategoryIDs []string
 }
 
-type CreateTagInput struct {
+type CreateCategoryInput struct {
 	FamilyID string
 	Name     string
 	Color    *string
@@ -73,10 +73,10 @@ type OptionalNullableString struct {
 	Value *string
 }
 
-type UpdateTagInput struct {
-	FamilyID string
-	TagID    string
-	Name     string
-	Color    OptionalNullableString
-	Emoji    OptionalNullableString
+type UpdateCategoryInput struct {
+	FamilyID   string
+	CategoryID string
+	Name       string
+	Color      OptionalNullableString
+	Emoji      OptionalNullableString
 }

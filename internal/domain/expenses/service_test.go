@@ -9,19 +9,19 @@ import (
 	"time"
 )
 
-const tagID1 = "11111111-1111-1111-1111-111111111111"
+const categoryID1 = "11111111-1111-1111-1111-111111111111"
 
 type fakeExpensesRepo struct {
-	expenses    map[string]*Expense
-	tags        map[string]*Tag
-	expenseTags map[string][]string
+	expenses          map[string]*Expense
+	categories        map[string]*Category
+	expenseCategories map[string][]string
 }
 
 func newFakeExpensesRepo() *fakeExpensesRepo {
 	return &fakeExpensesRepo{
-		expenses:    make(map[string]*Expense),
-		tags:        make(map[string]*Tag),
-		expenseTags: make(map[string][]string),
+		expenses:          make(map[string]*Expense),
+		categories:        make(map[string]*Category),
+		expenseCategories: make(map[string][]string),
 	}
 }
 
@@ -41,8 +41,8 @@ func (r *fakeExpensesRepo) ListExpenses(ctx context.Context, familyID string, fi
 		if filter.To != nil && expense.Date.After(*filter.To) {
 			continue
 		}
-		if len(filter.TagIDs) > 0 {
-			if !containsAny(r.expenseTags[expense.ID], filter.TagIDs) {
+		if len(filter.CategoryIDs) > 0 {
+			if !containsAny(r.expenseCategories[expense.ID], filter.CategoryIDs) {
 				continue
 			}
 		}
@@ -94,43 +94,43 @@ func (r *fakeExpensesRepo) DeleteExpense(ctx context.Context, familyID, expenseI
 		return false, nil
 	}
 	delete(r.expenses, expenseID)
-	delete(r.expenseTags, expenseID)
+	delete(r.expenseCategories, expenseID)
 	return true, nil
 }
 
-func (r *fakeExpensesRepo) ReplaceExpenseTags(ctx context.Context, expenseID string, tagIDs []string) error {
-	r.expenseTags[expenseID] = append([]string{}, tagIDs...)
+func (r *fakeExpensesRepo) ReplaceExpenseCategories(ctx context.Context, expenseID string, categoryIDs []string) error {
+	r.expenseCategories[expenseID] = append([]string{}, categoryIDs...)
 	return nil
 }
 
-func (r *fakeExpensesRepo) GetTagIDsByExpenseIDs(ctx context.Context, expenseIDs []string) (map[string][]string, error) {
+func (r *fakeExpensesRepo) GetCategoryIDsByExpenseIDs(ctx context.Context, expenseIDs []string) (map[string][]string, error) {
 	result := make(map[string][]string, len(expenseIDs))
 	for _, id := range expenseIDs {
-		result[id] = append([]string{}, r.expenseTags[id]...)
+		result[id] = append([]string{}, r.expenseCategories[id]...)
 	}
 	return result, nil
 }
 
-func (r *fakeExpensesRepo) CountTagsByIDs(ctx context.Context, familyID string, tagIDs []string) (int64, error) {
+func (r *fakeExpensesRepo) CountCategoriesByIDs(ctx context.Context, familyID string, categoryIDs []string) (int64, error) {
 	var count int64
-	seen := make(map[string]struct{}, len(tagIDs))
-	for _, tagID := range tagIDs {
-		if _, ok := seen[tagID]; ok {
+	seen := make(map[string]struct{}, len(categoryIDs))
+	for _, categoryID := range categoryIDs {
+		if _, ok := seen[categoryID]; ok {
 			continue
 		}
-		seen[tagID] = struct{}{}
-		if tag, ok := r.tags[tagID]; ok && tag.FamilyID == familyID {
+		seen[categoryID] = struct{}{}
+		if category, ok := r.categories[categoryID]; ok && category.FamilyID == familyID {
 			count++
 		}
 	}
 	return count, nil
 }
 
-func (r *fakeExpensesRepo) ListTags(ctx context.Context, familyID string) ([]Tag, error) {
-	result := make([]Tag, 0)
-	for _, tag := range r.tags {
-		if tag.FamilyID == familyID {
-			result = append(result, *tag)
+func (r *fakeExpensesRepo) ListCategories(ctx context.Context, familyID string) ([]Category, error) {
+	result := make([]Category, 0)
+	for _, category := range r.categories {
+		if category.FamilyID == familyID {
+			result = append(result, *category)
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -139,56 +139,56 @@ func (r *fakeExpensesRepo) ListTags(ctx context.Context, familyID string) ([]Tag
 	return result, nil
 }
 
-func (r *fakeExpensesRepo) CreateTag(ctx context.Context, tag *Tag) error {
-	r.tags[tag.ID] = tag
+func (r *fakeExpensesRepo) CreateCategory(ctx context.Context, category *Category) error {
+	r.categories[category.ID] = category
 	return nil
 }
 
-func (r *fakeExpensesRepo) GetTagByID(ctx context.Context, familyID, tagID string) (*Tag, error) {
-	tag, ok := r.tags[tagID]
-	if !ok || tag.FamilyID != familyID {
-		return nil, ErrTagNotFound
+func (r *fakeExpensesRepo) GetCategoryByID(ctx context.Context, familyID, categoryID string) (*Category, error) {
+	category, ok := r.categories[categoryID]
+	if !ok || category.FamilyID != familyID {
+		return nil, ErrCategoryNotFound
 	}
-	return tag, nil
+	return category, nil
 }
 
-func (r *fakeExpensesRepo) UpdateTag(ctx context.Context, tag *Tag) error {
-	if _, ok := r.tags[tag.ID]; !ok {
-		return ErrTagNotFound
+func (r *fakeExpensesRepo) UpdateCategory(ctx context.Context, category *Category) error {
+	if _, ok := r.categories[category.ID]; !ok {
+		return ErrCategoryNotFound
 	}
-	r.tags[tag.ID] = tag
+	r.categories[category.ID] = category
 	return nil
 }
 
-func (r *fakeExpensesRepo) CountTagsByName(ctx context.Context, familyID, name, excludeID string) (int64, error) {
+func (r *fakeExpensesRepo) CountCategoriesByName(ctx context.Context, familyID, name, excludeID string) (int64, error) {
 	var count int64
-	for _, tag := range r.tags {
-		if tag.FamilyID != familyID {
+	for _, category := range r.categories {
+		if category.FamilyID != familyID {
 			continue
 		}
-		if excludeID != "" && tag.ID == excludeID {
+		if excludeID != "" && category.ID == excludeID {
 			continue
 		}
-		if strings.EqualFold(tag.Name, name) {
+		if strings.EqualFold(category.Name, name) {
 			count++
 		}
 	}
 	return count, nil
 }
 
-func (r *fakeExpensesRepo) DeleteTag(ctx context.Context, familyID, tagID string) (bool, error) {
-	tag, ok := r.tags[tagID]
-	if !ok || tag.FamilyID != familyID {
+func (r *fakeExpensesRepo) DeleteCategory(ctx context.Context, familyID, categoryID string) (bool, error) {
+	category, ok := r.categories[categoryID]
+	if !ok || category.FamilyID != familyID {
 		return false, nil
 	}
-	delete(r.tags, tagID)
+	delete(r.categories, categoryID)
 	return true, nil
 }
 
-func (r *fakeExpensesRepo) CountExpenseTagsByTagID(ctx context.Context, tagID string) (int64, error) {
+func (r *fakeExpensesRepo) CountExpenseCategoriesByCategoryID(ctx context.Context, categoryID string) (int64, error) {
 	var count int64
-	for _, tags := range r.expenseTags {
-		if contains(tags, tagID) {
+	for _, categories := range r.expenseCategories {
+		if contains(categories, categoryID) {
 			count++
 		}
 	}
@@ -197,17 +197,17 @@ func (r *fakeExpensesRepo) CountExpenseTagsByTagID(ctx context.Context, tagID st
 
 func TestCreateExpenseSuccess(t *testing.T) {
 	repo := newFakeExpensesRepo()
-	repo.tags[tagID1] = &Tag{ID: tagID1, FamilyID: "fam-1", Name: "Food"}
+	repo.categories[categoryID1] = &Category{ID: categoryID1, FamilyID: "fam-1", Name: "Food"}
 	svc := NewService(repo)
 
 	input := CreateExpenseInput{
-		FamilyID: "fam-1",
-		UserID:   "user-1",
-		Date:     time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
-		Amount:   12.5,
-		Currency: "byn",
-		Title:    "Coffee",
-		TagIDs:   []string{tagID1},
+		FamilyID:    "fam-1",
+		UserID:      "user-1",
+		Date:        time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+		Amount:      12.5,
+		Currency:    "byn",
+		Title:       "Coffee",
+		CategoryIDs: []string{categoryID1},
 	}
 
 	result, err := svc.CreateExpense(context.Background(), input)
@@ -217,31 +217,31 @@ func TestCreateExpenseSuccess(t *testing.T) {
 	if result.Currency != "BYN" {
 		t.Fatalf("expected currency normalized, got %q", result.Currency)
 	}
-	if len(result.TagIDs) != 1 || result.TagIDs[0] != tagID1 {
-		t.Fatalf("expected tag ids, got %+v", result.TagIDs)
+	if len(result.CategoryIDs) != 1 || result.CategoryIDs[0] != categoryID1 {
+		t.Fatalf("expected category ids, got %+v", result.CategoryIDs)
 	}
 	if repo.expenses[result.ID] == nil {
 		t.Fatalf("expense not stored")
 	}
 }
 
-func TestCreateExpenseTagNotFound(t *testing.T) {
+func TestCreateExpenseCategoryNotFound(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
 
 	input := CreateExpenseInput{
-		FamilyID: "fam-1",
-		UserID:   "user-1",
-		Date:     time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
-		Amount:   12.5,
-		Currency: "BYN",
-		Title:    "Coffee",
-		TagIDs:   []string{tagID1},
+		FamilyID:    "fam-1",
+		UserID:      "user-1",
+		Date:        time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+		Amount:      12.5,
+		Currency:    "BYN",
+		Title:       "Coffee",
+		CategoryIDs: []string{categoryID1},
 	}
 
 	_, err := svc.CreateExpense(context.Background(), input)
-	if !errors.Is(err, ErrTagNotFound) {
-		t.Fatalf("expected ErrTagNotFound, got %v", err)
+	if !errors.Is(err, ErrCategoryNotFound) {
+		t.Fatalf("expected ErrCategoryNotFound, got %v", err)
 	}
 }
 
@@ -250,13 +250,13 @@ func TestUpdateExpenseNotFound(t *testing.T) {
 	svc := NewService(repo)
 
 	input := UpdateExpenseInput{
-		ID:       "exp-1",
-		FamilyID: "fam-1",
-		Date:     time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
-		Amount:   10,
-		Currency: "BYN",
-		Title:    "Coffee",
-		TagIDs:   nil,
+		ID:          "exp-1",
+		FamilyID:    "fam-1",
+		Date:        time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+		Amount:      10,
+		Currency:    "BYN",
+		Title:       "Coffee",
+		CategoryIDs: nil,
 	}
 
 	_, err := svc.UpdateExpense(context.Background(), input)
@@ -267,7 +267,7 @@ func TestUpdateExpenseNotFound(t *testing.T) {
 
 func TestUpdateExpenseSuccess(t *testing.T) {
 	repo := newFakeExpensesRepo()
-	repo.tags[tagID1] = &Tag{ID: tagID1, FamilyID: "fam-1", Name: "Food"}
+	repo.categories[categoryID1] = &Category{ID: categoryID1, FamilyID: "fam-1", Name: "Food"}
 	repo.expenses["exp-1"] = &Expense{
 		ID:       "exp-1",
 		FamilyID: "fam-1",
@@ -280,13 +280,13 @@ func TestUpdateExpenseSuccess(t *testing.T) {
 
 	svc := NewService(repo)
 	input := UpdateExpenseInput{
-		ID:       "exp-1",
-		FamilyID: "fam-1",
-		Date:     time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
-		Amount:   10,
-		Currency: "usd",
-		Title:    "New",
-		TagIDs:   []string{tagID1},
+		ID:          "exp-1",
+		FamilyID:    "fam-1",
+		Date:        time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+		Amount:      10,
+		Currency:    "usd",
+		Title:       "New",
+		CategoryIDs: []string{categoryID1},
 	}
 
 	result, err := svc.UpdateExpense(context.Background(), input)
@@ -301,11 +301,11 @@ func TestUpdateExpenseSuccess(t *testing.T) {
 	}
 }
 
-func TestListExpensesMergesTags(t *testing.T) {
+func TestListExpensesMergesCategories(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	repo.expenses["exp-1"] = &Expense{ID: "exp-1", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC)}
 	repo.expenses["exp-2"] = &Expense{ID: "exp-2", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC)}
-	repo.expenseTags["exp-1"] = []string{tagID1}
+	repo.expenseCategories["exp-1"] = []string{categoryID1}
 
 	svc := NewService(repo)
 	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{})
@@ -322,8 +322,8 @@ func TestListExpensesMergesTags(t *testing.T) {
 	for _, item := range items {
 		if item.ID == "exp-1" {
 			found = true
-			if len(item.TagIDs) != 1 || item.TagIDs[0] != tagID1 {
-				t.Fatalf("expected tags on exp-1, got %v", item.TagIDs)
+			if len(item.CategoryIDs) != 1 || item.CategoryIDs[0] != categoryID1 {
+				t.Fatalf("expected categories on exp-1, got %v", item.CategoryIDs)
 			}
 		}
 	}
@@ -332,14 +332,14 @@ func TestListExpensesMergesTags(t *testing.T) {
 	}
 }
 
-func TestListExpensesFilterByTagIDsSingle(t *testing.T) {
+func TestListExpensesFilterByCategoryIDsSingle(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	repo.expenses["exp-1"] = &Expense{ID: "exp-1", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC)}
 	repo.expenses["exp-2"] = &Expense{ID: "exp-2", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC)}
-	repo.expenseTags["exp-1"] = []string{tagID1}
+	repo.expenseCategories["exp-1"] = []string{categoryID1}
 
 	svc := NewService(repo)
-	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{TagIDs: []string{tagID1}})
+	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{CategoryIDs: []string{categoryID1}})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -348,17 +348,17 @@ func TestListExpensesFilterByTagIDsSingle(t *testing.T) {
 	}
 }
 
-func TestListExpensesFilterByTagIDsMultiple(t *testing.T) {
+func TestListExpensesFilterByCategoryIDsMultiple(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	repo.expenses["exp-1"] = &Expense{ID: "exp-1", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC)}
 	repo.expenses["exp-2"] = &Expense{ID: "exp-2", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC)}
 	repo.expenses["exp-3"] = &Expense{ID: "exp-3", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 3, 0, 0, 0, 0, time.UTC)}
-	repo.expenseTags["exp-1"] = []string{tagID1}
-	repo.expenseTags["exp-2"] = []string{"22222222-2222-2222-2222-222222222222"}
-	repo.expenseTags["exp-3"] = []string{"33333333-3333-3333-3333-333333333333"}
+	repo.expenseCategories["exp-1"] = []string{categoryID1}
+	repo.expenseCategories["exp-2"] = []string{"22222222-2222-2222-2222-222222222222"}
+	repo.expenseCategories["exp-3"] = []string{"33333333-3333-3333-3333-333333333333"}
 
 	svc := NewService(repo)
-	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{TagIDs: []string{tagID1, "22222222-2222-2222-2222-222222222222"}})
+	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{CategoryIDs: []string{categoryID1, "22222222-2222-2222-2222-222222222222"}})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -367,13 +367,13 @@ func TestListExpensesFilterByTagIDsMultiple(t *testing.T) {
 	}
 }
 
-func TestListExpensesFilterByTagIDsEmptyIgnored(t *testing.T) {
+func TestListExpensesFilterByCategoryIDsEmptyIgnored(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	repo.expenses["exp-1"] = &Expense{ID: "exp-1", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC)}
 	repo.expenses["exp-2"] = &Expense{ID: "exp-2", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC)}
 
 	svc := NewService(repo)
-	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{TagIDs: []string{}})
+	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{CategoryIDs: []string{}})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -390,11 +390,11 @@ func TestDeleteExpenseNotFound(t *testing.T) {
 	}
 }
 
-func TestCreateAndDeleteTag(t *testing.T) {
+func TestCreateAndDeleteCategory(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
 
-	created, err := svc.CreateTag(context.Background(), CreateTagInput{
+	created, err := svc.CreateCategory(context.Background(), CreateCategoryInput{
 		FamilyID: "fam-1",
 		Name:     "Food",
 	})
@@ -402,30 +402,30 @@ func TestCreateAndDeleteTag(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if created.Name != "Food" {
-		t.Fatalf("expected tag name, got %q", created.Name)
+		t.Fatalf("expected category name, got %q", created.Name)
 	}
 
-	if err := svc.DeleteTag(context.Background(), "fam-1", created.ID); err != nil {
+	if err := svc.DeleteCategory(context.Background(), "fam-1", created.ID); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if _, ok := repo.tags[created.ID]; ok {
-		t.Fatalf("expected tag deleted")
+	if _, ok := repo.categories[created.ID]; ok {
+		t.Fatalf("expected category deleted")
 	}
 }
 
-func TestDeleteTagNotFound(t *testing.T) {
+func TestDeleteCategoryNotFound(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
-	if err := svc.DeleteTag(context.Background(), "fam-1", tagID1); !errors.Is(err, ErrTagNotFound) {
-		t.Fatalf("expected ErrTagNotFound, got %v", err)
+	if err := svc.DeleteCategory(context.Background(), "fam-1", categoryID1); !errors.Is(err, ErrCategoryNotFound) {
+		t.Fatalf("expected ErrCategoryNotFound, got %v", err)
 	}
 }
 
-func TestCreateTagWithColorAndEmoji(t *testing.T) {
+func TestCreateCategoryWithColorAndEmoji(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
 
-	created, err := svc.CreateTag(context.Background(), CreateTagInput{
+	created, err := svc.CreateCategory(context.Background(), CreateCategoryInput{
 		FamilyID: "fam-1",
 		Name:     "Food",
 		Color:    strPtr("#A1B2C3"),
@@ -442,19 +442,19 @@ func TestCreateTagWithColorAndEmoji(t *testing.T) {
 	}
 }
 
-func TestUpdateTagWithColorAndEmoji(t *testing.T) {
+func TestUpdateCategoryWithColorAndEmoji(t *testing.T) {
 	repo := newFakeExpensesRepo()
-	repo.tags[tagID1] = &Tag{
-		ID:       tagID1,
+	repo.categories[categoryID1] = &Category{
+		ID:       categoryID1,
 		FamilyID: "fam-1",
 		Name:     "Food",
 	}
 	svc := NewService(repo)
 
-	updated, err := svc.UpdateTag(context.Background(), UpdateTagInput{
-		FamilyID: "fam-1",
-		TagID:    tagID1,
-		Name:     "Food Updated",
+	updated, err := svc.UpdateCategory(context.Background(), UpdateCategoryInput{
+		FamilyID:   "fam-1",
+		CategoryID: categoryID1,
+		Name:       "Food Updated",
 		Color: OptionalNullableString{
 			Set:   true,
 			Value: strPtr("#00FFAA"),
@@ -478,10 +478,10 @@ func TestUpdateTagWithColorAndEmoji(t *testing.T) {
 	}
 }
 
-func TestUpdateTagClearColorAndEmojiWithNull(t *testing.T) {
+func TestUpdateCategoryClearColorAndEmojiWithNull(t *testing.T) {
 	repo := newFakeExpensesRepo()
-	repo.tags[tagID1] = &Tag{
-		ID:       tagID1,
+	repo.categories[categoryID1] = &Category{
+		ID:       categoryID1,
 		FamilyID: "fam-1",
 		Name:     "Food",
 		Color:    strPtr("#112233"),
@@ -489,10 +489,10 @@ func TestUpdateTagClearColorAndEmojiWithNull(t *testing.T) {
 	}
 	svc := NewService(repo)
 
-	updated, err := svc.UpdateTag(context.Background(), UpdateTagInput{
-		FamilyID: "fam-1",
-		TagID:    tagID1,
-		Name:     "Food",
+	updated, err := svc.UpdateCategory(context.Background(), UpdateCategoryInput{
+		FamilyID:   "fam-1",
+		CategoryID: categoryID1,
+		Name:       "Food",
 		Color: OptionalNullableString{
 			Set:   true,
 			Value: nil,
@@ -513,10 +513,10 @@ func TestUpdateTagClearColorAndEmojiWithNull(t *testing.T) {
 	}
 }
 
-func TestListTagsIncludesColorAndEmoji(t *testing.T) {
+func TestListCategoriesIncludesColorAndEmoji(t *testing.T) {
 	repo := newFakeExpensesRepo()
-	repo.tags[tagID1] = &Tag{
-		ID:       tagID1,
+	repo.categories[categoryID1] = &Category{
+		ID:       categoryID1,
 		FamilyID: "fam-1",
 		Name:     "Food",
 		Color:    strPtr("#ffffff"),
@@ -524,46 +524,46 @@ func TestListTagsIncludesColorAndEmoji(t *testing.T) {
 	}
 	svc := NewService(repo)
 
-	tags, err := svc.ListTags(context.Background(), "fam-1")
+	categories, err := svc.ListCategories(context.Background(), "fam-1")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if len(tags) != 1 {
-		t.Fatalf("expected 1 tag, got %d", len(tags))
+	if len(categories) != 1 {
+		t.Fatalf("expected 1 category, got %d", len(categories))
 	}
-	if tags[0].Color == nil || *tags[0].Color != "#ffffff" {
-		t.Fatalf("expected color #ffffff, got %+v", tags[0].Color)
+	if categories[0].Color == nil || *categories[0].Color != "#ffffff" {
+		t.Fatalf("expected color #ffffff, got %+v", categories[0].Color)
 	}
-	if tags[0].Emoji == nil || *tags[0].Emoji != "🙂" {
-		t.Fatalf("expected emoji 🙂, got %+v", tags[0].Emoji)
+	if categories[0].Emoji == nil || *categories[0].Emoji != "🙂" {
+		t.Fatalf("expected emoji 🙂, got %+v", categories[0].Emoji)
 	}
 }
 
-func TestCreateTagInvalidColor(t *testing.T) {
+func TestCreateCategoryInvalidColor(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
 
-	_, err := svc.CreateTag(context.Background(), CreateTagInput{
+	_, err := svc.CreateCategory(context.Background(), CreateCategoryInput{
 		FamilyID: "fam-1",
 		Name:     "Food",
 		Color:    strPtr("#GGGGGG"),
 	})
-	if !errors.Is(err, ErrInvalidTagColor) {
-		t.Fatalf("expected ErrInvalidTagColor, got %v", err)
+	if !errors.Is(err, ErrInvalidCategoryColor) {
+		t.Fatalf("expected ErrInvalidCategoryColor, got %v", err)
 	}
 }
 
-func TestCreateTagInvalidEmoji(t *testing.T) {
+func TestCreateCategoryInvalidEmoji(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
 
-	_, err := svc.CreateTag(context.Background(), CreateTagInput{
+	_, err := svc.CreateCategory(context.Background(), CreateCategoryInput{
 		FamilyID: "fam-1",
 		Name:     "Food",
 		Emoji:    strPtr("ab"),
 	})
-	if !errors.Is(err, ErrInvalidTagEmoji) {
-		t.Fatalf("expected ErrInvalidTagEmoji, got %v", err)
+	if !errors.Is(err, ErrInvalidCategoryEmoji) {
+		t.Fatalf("expected ErrInvalidCategoryEmoji, got %v", err)
 	}
 }
 

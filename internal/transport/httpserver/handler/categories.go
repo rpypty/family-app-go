@@ -13,13 +13,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type createTagRequest struct {
+type createCategoryRequest struct {
 	Name  string  `json:"name"`
 	Color *string `json:"color"`
 	Emoji *string `json:"emoji"`
 }
 
-type updateTagRequest struct {
+type updateCategoryRequest struct {
 	Name  string                 `json:"name"`
 	Color optionalNullableString `json:"color"`
 	Emoji optionalNullableString `json:"emoji"`
@@ -46,7 +46,7 @@ func (o *optionalNullableString) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) ListCategories(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
@@ -56,38 +56,38 @@ func (h *Handlers) ListTags(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			h.log.BusinessError("tags.list: family not found", err, "user_id", user.ID)
+			h.log.BusinessError("categories.list: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
-		h.log.InternalError("tags.list: get family failed", err, "user_id", user.ID)
+		h.log.InternalError("categories.list: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
-	tags, err := h.Expenses.ListTags(r.Context(), family.ID)
+	categories, err := h.Expenses.ListCategories(r.Context(), family.ID)
 	if err != nil {
-		h.log.InternalError("tags.list: list tags failed", err, "user_id", user.ID, "family_id", family.ID)
+		h.log.InternalError("categories.list: list categories failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
-	response := make([]tagResponse, 0, len(tags))
-	for _, tag := range tags {
-		response = append(response, tagResponse{
-			ID:        tag.ID,
-			Name:      tag.Name,
-			Color:     tag.Color,
-			Emoji:     tag.Emoji,
-			CreatedAt: tag.CreatedAt,
+	response := make([]categoryResponse, 0, len(categories))
+	for _, category := range categories {
+		response = append(response, categoryResponse{
+			ID:        category.ID,
+			Name:      category.Name,
+			Color:     category.Color,
+			Emoji:     category.Emoji,
+			CreatedAt: category.CreatedAt,
 		})
 	}
 
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
-	var req createTagRequest
+func (h *Handlers) CreateCategory(w http.ResponseWriter, r *http.Request) {
+	var req createCategoryRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_json", "invalid json body")
 		return
@@ -111,32 +111,32 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			h.log.BusinessError("tags.create: family not found", err, "user_id", user.ID)
+			h.log.BusinessError("categories.create: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
-		h.log.InternalError("tags.create: get family failed", err, "user_id", user.ID)
+		h.log.InternalError("categories.create: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
-	created, err := h.Expenses.CreateTag(r.Context(), expensesdomain.CreateTagInput{
+	created, err := h.Expenses.CreateCategory(r.Context(), expensesdomain.CreateCategoryInput{
 		FamilyID: family.ID,
 		Name:     req.Name,
 		Color:    req.Color,
 		Emoji:    req.Emoji,
 	})
 	if err != nil {
-		if writeTagValidationError(w, err) {
-			h.log.BusinessError("tags.create: validation failed", err, "user_id", user.ID, "family_id", family.ID)
+		if writeCategoryValidationError(w, err) {
+			h.log.BusinessError("categories.create: validation failed", err, "user_id", user.ID, "family_id", family.ID)
 			return
 		}
-		h.log.InternalError("tags.create: create tag failed", err, "user_id", user.ID, "family_id", family.ID)
+		h.log.InternalError("categories.create: create category failed", err, "user_id", user.ID, "family_id", family.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, tagResponse{
+	writeJSON(w, http.StatusCreated, categoryResponse{
 		ID:        created.ID,
 		Name:      created.Name,
 		Color:     created.Color,
@@ -145,9 +145,9 @@ func (h *Handlers) CreateTag(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request) {
-	tagID := strings.TrimSpace(chi.URLParam(r, "id"))
-	if tagID == "" {
+func (h *Handlers) DeleteCategory(w http.ResponseWriter, r *http.Request) {
+	categoryID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if categoryID == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
 		return
 	}
@@ -161,27 +161,27 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			h.log.BusinessError("tags.delete: family not found", err, "user_id", user.ID)
+			h.log.BusinessError("categories.delete: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
-		h.log.InternalError("tags.delete: get family failed", err, "user_id", user.ID)
+		h.log.InternalError("categories.delete: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
-	if err := h.Expenses.DeleteTag(r.Context(), family.ID, tagID); err != nil {
-		if errors.Is(err, expensesdomain.ErrTagNotFound) {
-			h.log.BusinessError("tags.delete: tag not found", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
-			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
+	if err := h.Expenses.DeleteCategory(r.Context(), family.ID, categoryID); err != nil {
+		if errors.Is(err, expensesdomain.ErrCategoryNotFound) {
+			h.log.BusinessError("categories.delete: category not found", err, "user_id", user.ID, "family_id", family.ID, "category_id", categoryID)
+			writeError(w, http.StatusNotFound, "category_not_found", "category not found")
 			return
 		}
-		if errors.Is(err, expensesdomain.ErrTagInUse) {
-			h.log.BusinessError("tags.delete: tag is in use", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
-			writeError(w, http.StatusConflict, "tag_in_use", "Tag is used by expenses")
+		if errors.Is(err, expensesdomain.ErrCategoryInUse) {
+			h.log.BusinessError("categories.delete: category is in use", err, "user_id", user.ID, "family_id", family.ID, "category_id", categoryID)
+			writeError(w, http.StatusConflict, "category_in_use", "Category is used by expenses")
 			return
 		}
-		h.log.InternalError("tags.delete: delete tag failed", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
+		h.log.InternalError("categories.delete: delete category failed", err, "user_id", user.ID, "family_id", family.ID, "category_id", categoryID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -189,14 +189,14 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
-	tagID := strings.TrimSpace(chi.URLParam(r, "id"))
-	if tagID == "" {
+func (h *Handlers) UpdateCategory(w http.ResponseWriter, r *http.Request) {
+	categoryID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if categoryID == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "id is required")
 		return
 	}
 
-	var req updateTagRequest
+	var req updateCategoryRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_json", "invalid json body")
 		return
@@ -219,18 +219,18 @@ func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
 	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, familydomain.ErrFamilyNotFound) {
-			h.log.BusinessError("tags.update: family not found", err, "user_id", user.ID)
+			h.log.BusinessError("categories.update: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
 			return
 		}
-		h.log.InternalError("tags.update: get family failed", err, "user_id", user.ID)
+		h.log.InternalError("categories.update: get family failed", err, "user_id", user.ID)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
-	updated, err := h.Expenses.UpdateTag(r.Context(), expensesdomain.UpdateTagInput{
+	updated, err := h.Expenses.UpdateCategory(r.Context(), expensesdomain.UpdateCategoryInput{
 		FamilyID: family.ID,
-		TagID:    tagID,
+		CategoryID:    categoryID,
 		Name:     req.Name,
 		Color: expensesdomain.OptionalNullableString{
 			Set:   req.Color.Set,
@@ -243,22 +243,22 @@ func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		switch {
-		case errors.Is(err, expensesdomain.ErrTagNotFound):
-			h.log.BusinessError("tags.update: tag not found", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
-			writeError(w, http.StatusNotFound, "tag_not_found", "tag not found")
-		case errors.Is(err, expensesdomain.ErrTagNameTaken):
-			h.log.BusinessError("tags.update: tag name already exists", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
-			writeError(w, http.StatusConflict, "tag_name_taken", "Tag name already exists")
-		case writeTagValidationError(w, err):
-			h.log.BusinessError("tags.update: validation failed", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
+		case errors.Is(err, expensesdomain.ErrCategoryNotFound):
+			h.log.BusinessError("categories.update: category not found", err, "user_id", user.ID, "family_id", family.ID, "category_id", categoryID)
+			writeError(w, http.StatusNotFound, "category_not_found", "category not found")
+		case errors.Is(err, expensesdomain.ErrCategoryNameTaken):
+			h.log.BusinessError("categories.update: category name already exists", err, "user_id", user.ID, "family_id", family.ID, "category_id", categoryID)
+			writeError(w, http.StatusConflict, "category_name_taken", "Category name already exists")
+		case writeCategoryValidationError(w, err):
+			h.log.BusinessError("categories.update: validation failed", err, "user_id", user.ID, "family_id", family.ID, "category_id", categoryID)
 		default:
-			h.log.InternalError("tags.update: update tag failed", err, "user_id", user.ID, "family_id", family.ID, "tag_id", tagID)
+			h.log.InternalError("categories.update: update category failed", err, "user_id", user.ID, "family_id", family.ID, "category_id", categoryID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, tagResponse{
+	writeJSON(w, http.StatusOK, categoryResponse{
 		ID:        updated.ID,
 		Name:      updated.Name,
 		Color:     updated.Color,
@@ -267,7 +267,7 @@ func (h *Handlers) UpdateTag(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-type tagResponse struct {
+type categoryResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Color     *string   `json:"color"`
@@ -275,12 +275,12 @@ type tagResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func writeTagValidationError(w http.ResponseWriter, err error) bool {
+func writeCategoryValidationError(w http.ResponseWriter, err error) bool {
 	switch {
-	case errors.Is(err, expensesdomain.ErrInvalidTagColor):
+	case errors.Is(err, expensesdomain.ErrInvalidCategoryColor):
 		writeError(w, http.StatusBadRequest, "invalid_request", "color must be null or #RRGGBB")
 		return true
-	case errors.Is(err, expensesdomain.ErrInvalidTagEmoji):
+	case errors.Is(err, expensesdomain.ErrInvalidCategoryEmoji):
 		writeError(w, http.StatusBadRequest, "invalid_request", "emoji must be a single emoji grapheme")
 		return true
 	default:

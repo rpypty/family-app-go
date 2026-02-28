@@ -36,7 +36,7 @@ const (
 	ErrorCodeUnsupportedOperationType      ErrorCode = "unsupported_operation_type"
 	ErrorCodeOperationPayloadMismatch      ErrorCode = "operation_payload_mismatch"
 	ErrorCodeDependencyNotResolved         ErrorCode = "dependency_not_resolved"
-	ErrorCodeTagNotFound                   ErrorCode = "tag_not_found"
+	ErrorCodeCategoryNotFound              ErrorCode = "category_not_found"
 	ErrorCodeTodoListNotFound              ErrorCode = "todo_list_not_found"
 	ErrorCodeTodoItemNotFound              ErrorCode = "todo_item_not_found"
 	ErrorCodeFamilyNotFound                ErrorCode = "family_not_found"
@@ -92,11 +92,11 @@ type OperationInput struct {
 }
 
 type CreateExpensePayload struct {
-	Date     time.Time
-	Amount   float64
-	Currency string
-	Title    string
-	TagIDs   []string
+	Date        time.Time
+	Amount      float64
+	Currency    string
+	Title       string
+	CategoryIDs []string
 }
 
 type CreateTodoPayload struct {

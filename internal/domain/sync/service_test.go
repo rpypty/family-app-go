@@ -343,14 +343,14 @@ func newFakeExpensesService() *fakeExpensesService {
 	return &fakeExpensesService{}
 }
 
-func (f *fakeExpensesService) CreateExpense(_ context.Context, _ expensesdomain.CreateExpenseInput) (*expensesdomain.ExpenseWithTags, error) {
+func (f *fakeExpensesService) CreateExpense(_ context.Context, _ expensesdomain.CreateExpenseInput) (*expensesdomain.ExpenseWithCategories, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.createCalls++
 	f.seq++
 	id := fmt.Sprintf("expense-%d", f.seq)
-	return &expensesdomain.ExpenseWithTags{
+	return &expensesdomain.ExpenseWithCategories{
 		Expense: expensesdomain.Expense{ID: id},
 	}, nil
 }

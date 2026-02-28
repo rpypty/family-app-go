@@ -9,14 +9,14 @@ type Repository interface {
 	CreateExpense(ctx context.Context, expense *Expense) error
 	UpdateExpense(ctx context.Context, expense *Expense) error
 	DeleteExpense(ctx context.Context, familyID, expenseID string) (bool, error)
-	ReplaceExpenseTags(ctx context.Context, expenseID string, tagIDs []string) error
-	GetTagIDsByExpenseIDs(ctx context.Context, expenseIDs []string) (map[string][]string, error)
-	CountTagsByIDs(ctx context.Context, familyID string, tagIDs []string) (int64, error)
-	ListTags(ctx context.Context, familyID string) ([]Tag, error)
-	CreateTag(ctx context.Context, tag *Tag) error
-	GetTagByID(ctx context.Context, familyID, tagID string) (*Tag, error)
-	UpdateTag(ctx context.Context, tag *Tag) error
-	CountTagsByName(ctx context.Context, familyID, name, excludeID string) (int64, error)
-	DeleteTag(ctx context.Context, familyID, tagID string) (bool, error)
-	CountExpenseTagsByTagID(ctx context.Context, tagID string) (int64, error)
+	ReplaceExpenseCategories(ctx context.Context, expenseID string, categoryIDs []string) error
+	GetCategoryIDsByExpenseIDs(ctx context.Context, expenseIDs []string) (map[string][]string, error)
+	CountCategoriesByIDs(ctx context.Context, familyID string, categoryIDs []string) (int64, error)
+	ListCategories(ctx context.Context, familyID string) ([]Category, error)
+	CreateCategory(ctx context.Context, category *Category) error
+	GetCategoryByID(ctx context.Context, familyID, categoryID string) (*Category, error)
+	UpdateCategory(ctx context.Context, category *Category) error
+	CountCategoriesByName(ctx context.Context, familyID, name, excludeID string) (int64, error)
+	DeleteCategory(ctx context.Context, familyID, categoryID string) (bool, error)
+	CountExpenseCategoriesByCategoryID(ctx context.Context, categoryID string) (int64, error)
 }

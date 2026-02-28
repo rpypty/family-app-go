@@ -16,7 +16,7 @@ import (
 )
 
 type ExpensesService interface {
-	CreateExpense(ctx context.Context, input expensesdomain.CreateExpenseInput) (*expensesdomain.ExpenseWithTags, error)
+	CreateExpense(ctx context.Context, input expensesdomain.CreateExpenseInput) (*expensesdomain.ExpenseWithCategories, error)
 }
 
 type TodosService interface {
@@ -184,17 +184,17 @@ func (s *Service) processOperation(ctx context.Context, input BatchInput, operat
 		}
 
 		createdExpense, err := s.expenses.CreateExpense(ctx, expensesdomain.CreateExpenseInput{
-			FamilyID: input.FamilyID,
-			UserID:   input.User.ID,
-			Date:     operation.CreateExpense.Date,
-			Amount:   operation.CreateExpense.Amount,
-			Currency: operation.CreateExpense.Currency,
-			Title:    operation.CreateExpense.Title,
-			TagIDs:   operation.CreateExpense.TagIDs,
+			FamilyID:    input.FamilyID,
+			UserID:      input.User.ID,
+			Date:        operation.CreateExpense.Date,
+			Amount:      operation.CreateExpense.Amount,
+			Currency:    operation.CreateExpense.Currency,
+			Title:       operation.CreateExpense.Title,
+			CategoryIDs: operation.CreateExpense.CategoryIDs,
 		})
 		if err != nil {
-			if errors.Is(err, expensesdomain.ErrTagNotFound) {
-				result = failResult(result, ErrorCodeTagNotFound, "tag not found", false)
+			if errors.Is(err, expensesdomain.ErrCategoryNotFound) {
+				result = failResult(result, ErrorCodeCategoryNotFound, "category not found", false)
 				break
 			}
 			result = failResult(result, ErrorCodeInternalError, "internal error", true)
