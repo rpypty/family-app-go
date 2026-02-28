@@ -38,26 +38,21 @@ func (r *PostgresRepository) Timeseries(ctx context.Context, familyID string, fi
 	where, args := buildExpenseWhere(familyID, filter.From, filter.To, filter.Currency, filter.TagIDs)
 
 	groupBy := strings.ToLower(strings.TrimSpace(filter.GroupBy))
-	format := "YYYY-MM-DD"
-	if groupBy == "month" {
-		format = "YYYY-MM"
-	}
-	if groupBy != "day" && groupBy != "week" && groupBy != "month" {
+	if groupBy != "day" && groupBy != "week" {
 		return nil, fmt.Errorf("invalid group_by")
 	}
 
 	tz := strings.TrimSpace(filter.Timezone)
 	if tz == "" {
-		tz = "UTC"
+		tz = "Europe/Moscow"
 	}
 
 	periodExpr := fmt.Sprintf("date_trunc('%s', timezone(?, e.date::timestamp))", groupBy)
-	selectExpr := fmt.Sprintf("to_char(%s, '%s')", periodExpr, format)
-	query := fmt.Sprintf("SELECT %s AS period, COALESCE(SUM(e.amount), 0) AS total, COUNT(*) AS count FROM expenses e WHERE %s GROUP BY %s ORDER BY %s", selectExpr, where, periodExpr, periodExpr)
+	selectExpr := fmt.Sprintf("to_char(%s, 'YYYY-MM-DD')", periodExpr)
+	query := fmt.Sprintf("SELECT %s AS period, COALESCE(SUM(e.amount), 0) AS total, COUNT(*) AS count FROM expenses e WHERE %s GROUP BY 1 ORDER BY 1", selectExpr, where)
 
 	queryArgs := []interface{}{tz}
 	queryArgs = append(queryArgs, args...)
-	queryArgs = append(queryArgs, tz)
 
 	var rows []analyticsdomain.TimeseriesPoint
 	if err := r.db.WithContext(ctx).Raw(query, queryArgs...).Scan(&rows).Error; err != nil {

@@ -132,7 +132,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [day, week, month]
+            enum: [day, week]
         - in: query
           name: currency
           schema:
@@ -145,6 +145,7 @@ paths:
           name: timezone
           schema:
             type: string
+            default: Europe/Moscow
       responses:
         '200':
           description: OK

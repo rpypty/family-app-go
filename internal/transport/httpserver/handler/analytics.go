@@ -112,8 +112,8 @@ func (h *Handlers) AnalyticsTimeseries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	groupBy := strings.ToLower(strings.TrimSpace(query.Get("group_by")))
-	if groupBy != "day" && groupBy != "week" && groupBy != "month" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "group_by must be day, week, or month")
+	if groupBy != "day" && groupBy != "week" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "group_by must be day or week")
 		return
 	}
 
@@ -327,7 +327,7 @@ func (h *Handlers) ReportsCompare(w http.ResponseWriter, r *http.Request) {
 func normalizeTimezone(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "UTC", nil
+		return "Europe/Moscow", nil
 	}
 	_, err := time.LoadLocation(value)
 	if err != nil {
