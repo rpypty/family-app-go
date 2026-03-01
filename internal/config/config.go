@@ -13,8 +13,18 @@ type Config struct {
 	HTTPPort           string
 	Env                string
 	OfflineSyncEnabled bool
+	TopCategories      TopCategoriesConfig
 	DB                 DBConfig
 	Supabase           SupabaseConfig
+}
+
+type TopCategoriesConfig struct {
+	Enabled       bool
+	LookbackDays  int
+	DBReadLimit   int
+	MinRecords    int
+	ResponseCount int
+	CacheTTL      time.Duration
 }
 
 type DBConfig struct {
@@ -52,6 +62,14 @@ func Load(log logger.Logger) (Config, error) {
 		HTTPPort:           getEnv("HTTP_PORT", "8080"),
 		Env:                getEnv("ENV", "development"),
 		OfflineSyncEnabled: getEnvBool("OFFLINE_SYNC_ENABLED", true),
+		TopCategories: TopCategoriesConfig{
+			Enabled:       getEnvBool("TOP_CATEGORIES_ENABLED", true),
+			LookbackDays:  getEnvInt("TOP_CATEGORIES_LOOKBACK_DAYS", 30),
+			DBReadLimit:   getEnvInt("TOP_CATEGORIES_DB_READ_LIMIT", 1000),
+			MinRecords:    getEnvInt("TOP_CATEGORIES_MIN_RECORDS", 10),
+			ResponseCount: getEnvInt("TOP_CATEGORIES_RESPONSE_COUNT", 5),
+			CacheTTL:      getEnvDuration("TOP_CATEGORIES_CACHE_TTL", time.Minute),
+		},
 		DB: DBConfig{
 			DSN:             getEnv("DB_DSN", ""),
 			Host:            getEnv("DB_HOST", "localhost"),

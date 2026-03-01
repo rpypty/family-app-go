@@ -36,6 +36,7 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.Pr
 			r.Get("/analytics/summary", handlers.AnalyticsSummary)
 			r.Get("/analytics/timeseries", handlers.AnalyticsTimeseries)
 			r.Get("/analytics/by-category", handlers.AnalyticsByCategory)
+			r.Get("/top_categories", handlers.TopCategories)
 			r.Get("/reports/monthly", handlers.ReportsMonthly)
 			r.Get("/reports/compare", handlers.ReportsCompare)
 

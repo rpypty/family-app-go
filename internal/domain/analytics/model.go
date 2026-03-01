@@ -45,6 +45,35 @@ type ByCategoryRow struct {
 	Count        int64   `json:"count"`
 }
 
+type TopCategoriesFilter struct {
+	From          time.Time
+	To            time.Time
+	DBReadLimit   int
+	ResponseCount int
+}
+
+type TopCategoriesConfig struct {
+	Enabled       bool
+	LookbackDays  int
+	DBReadLimit   int
+	MinRecords    int
+	ResponseCount int
+	CacheTTL      time.Duration
+}
+
+type TopCategoriesStatus string
+
+const (
+	TopCategoriesStatusOK           TopCategoriesStatus = "OK"
+	TopCategoriesStatusNeedMoreData TopCategoriesStatus = "NEED_MORE_DATA"
+	TopCategoriesStatusDisabled     TopCategoriesStatus = "TOP_CATEGORIES_DISABLED"
+)
+
+type TopCategoriesResult struct {
+	Status TopCategoriesStatus `json:"status"`
+	Items  []ByCategoryRow     `json:"items"`
+}
+
 type MonthlyFilter struct {
 	From        time.Time
 	To          time.Time

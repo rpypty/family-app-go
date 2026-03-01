@@ -56,7 +56,14 @@ func New(log logger.Logger) (*App, error) {
 	expensesRepo := expensesrepo.NewPostgres(dbConn)
 	expensesService := expensesdomain.NewService(expensesRepo)
 	analyticsRepo := analyticsrepo.NewPostgres(dbConn)
-	analyticsService := analyticsdomain.NewService(analyticsRepo)
+	analyticsService := analyticsdomain.NewServiceWithTopCategoriesConfig(analyticsRepo, analyticsdomain.TopCategoriesConfig{
+		Enabled:       cfg.TopCategories.Enabled,
+		LookbackDays:  cfg.TopCategories.LookbackDays,
+		DBReadLimit:   cfg.TopCategories.DBReadLimit,
+		MinRecords:    cfg.TopCategories.MinRecords,
+		ResponseCount: cfg.TopCategories.ResponseCount,
+		CacheTTL:      cfg.TopCategories.CacheTTL,
+	})
 	userRepo := userrepo.NewPostgres(dbConn)
 	userService := userdomain.NewService(userRepo)
 	todosRepo := todosrepo.NewPostgres(dbConn)
