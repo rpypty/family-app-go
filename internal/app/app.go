@@ -13,13 +13,14 @@ import (
 	syncdomain "family-app-go/internal/domain/sync"
 	todosdomain "family-app-go/internal/domain/todos"
 	userdomain "family-app-go/internal/domain/user"
-	analyticsrepo "family-app-go/internal/repository/analytics"
-	expensesrepo "family-app-go/internal/repository/expenses"
-	familyrepo "family-app-go/internal/repository/family"
-	gymrepo "family-app-go/internal/repository/gym"
-	syncrepo "family-app-go/internal/repository/sync"
-	todosrepo "family-app-go/internal/repository/todos"
-	userrepo "family-app-go/internal/repository/user"
+	inmemoryrepo "family-app-go/internal/repository/inmemory"
+	analyticsrepo "family-app-go/internal/repository/postgres/analytics"
+	expensesrepo "family-app-go/internal/repository/postgres/expenses"
+	familyrepo "family-app-go/internal/repository/postgres/family"
+	gymrepo "family-app-go/internal/repository/postgres/gym"
+	syncrepo "family-app-go/internal/repository/postgres/sync"
+	todosrepo "family-app-go/internal/repository/postgres/todos"
+	userrepo "family-app-go/internal/repository/postgres/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
 	"family-app-go/pkg/logger"
@@ -52,11 +53,20 @@ func New(log logger.Logger) (*App, error) {
 
 	log.Info("app: initializing services")
 	familyRepo := familyrepo.NewPostgres(dbConn)
-	familyService := familydomain.NewService(familyRepo)
+	familyCache := inmemoryrepo.NewInMemoryFamilyCache()
+	familyService := familydomain.NewServiceWithCache(familyRepo, familyCache)
 	expensesRepo := expensesrepo.NewPostgres(dbConn)
-	expensesService := expensesdomain.NewService(expensesRepo)
+	categoriesCache := inmemoryrepo.NewInMemoryCategoriesCache()
+	expensesService := expensesdomain.NewServiceWithCategoriesCache(expensesRepo, categoriesCache)
 	analyticsRepo := analyticsrepo.NewPostgres(dbConn)
-	analyticsService := analyticsdomain.NewService(analyticsRepo)
+	analyticsService := analyticsdomain.NewServiceWithTopCategoriesConfig(analyticsRepo, analyticsdomain.TopCategoriesConfig{
+		Enabled:       cfg.TopCategories.Enabled,
+		LookbackDays:  cfg.TopCategories.LookbackDays,
+		DBReadLimit:   cfg.TopCategories.DBReadLimit,
+		MinRecords:    cfg.TopCategories.MinRecords,
+		ResponseCount: cfg.TopCategories.ResponseCount,
+		CacheTTL:      cfg.TopCategories.CacheTTL,
+	})
 	userRepo := userrepo.NewPostgres(dbConn)
 	userService := userdomain.NewService(userRepo)
 	todosRepo := todosrepo.NewPostgres(dbConn)

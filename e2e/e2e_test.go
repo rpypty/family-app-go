@@ -23,11 +23,12 @@ import (
 	familydomain "family-app-go/internal/domain/family"
 	todosdomain "family-app-go/internal/domain/todos"
 	userdomain "family-app-go/internal/domain/user"
-	analyticsrepo "family-app-go/internal/repository/analytics"
-	expensesrepo "family-app-go/internal/repository/expenses"
-	familyrepo "family-app-go/internal/repository/family"
-	todosrepo "family-app-go/internal/repository/todos"
-	userrepo "family-app-go/internal/repository/user"
+	inmemoryrepo "family-app-go/internal/repository/inmemory"
+	analyticsrepo "family-app-go/internal/repository/postgres/analytics"
+	expensesrepo "family-app-go/internal/repository/postgres/expenses"
+	familyrepo "family-app-go/internal/repository/postgres/family"
+	todosrepo "family-app-go/internal/repository/postgres/todos"
+	userrepo "family-app-go/internal/repository/postgres/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
 	"family-app-go/pkg/logger"
@@ -52,6 +53,14 @@ func setupE2E(t *testing.T) *testEnv {
 
 	cfg := config.Config{
 		DB: config.DBConfig{DSN: dsn},
+		TopCategories: config.TopCategoriesConfig{
+			Enabled:       true,
+			LookbackDays:  30,
+			DBReadLimit:   1000,
+			MinRecords:    1,
+			ResponseCount: 5,
+			CacheTTL:      time.Minute,
+		},
 		Supabase: config.SupabaseConfig{
 			URL:            authServer.URL,
 			PublishableKey: "test-key",
@@ -75,11 +84,18 @@ func setupE2E(t *testing.T) *testEnv {
 	}
 
 	familyRepo := familyrepo.NewPostgres(dbConn)
-	familyService := familydomain.NewService(familyRepo)
+	familyService := familydomain.NewServiceWithCache(familyRepo, inmemoryrepo.NewInMemoryFamilyCache())
 	expensesRepo := expensesrepo.NewPostgres(dbConn)
-	expensesService := expensesdomain.NewService(expensesRepo)
+	expensesService := expensesdomain.NewServiceWithCategoriesCache(expensesRepo, inmemoryrepo.NewInMemoryCategoriesCache())
 	analyticsRepo := analyticsrepo.NewPostgres(dbConn)
-	analyticsService := analyticsdomain.NewService(analyticsRepo)
+	analyticsService := analyticsdomain.NewServiceWithTopCategoriesConfig(analyticsRepo, analyticsdomain.TopCategoriesConfig{
+		Enabled:       cfg.TopCategories.Enabled,
+		LookbackDays:  cfg.TopCategories.LookbackDays,
+		DBReadLimit:   cfg.TopCategories.DBReadLimit,
+		MinRecords:    cfg.TopCategories.MinRecords,
+		ResponseCount: cfg.TopCategories.ResponseCount,
+		CacheTTL:      cfg.TopCategories.CacheTTL,
+	})
 	userRepo := userrepo.NewPostgres(dbConn)
 	userService := userdomain.NewService(userRepo)
 	todosRepo := todosrepo.NewPostgres(dbConn)
@@ -254,6 +270,18 @@ type categoryResponse struct {
 	Color     *string   `json:"color"`
 	Emoji     *string   `json:"emoji"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type analyticsByCategoryRowResponse struct {
+	CategoryID   string  `json:"category_id"`
+	CategoryName string  `json:"category_name"`
+	Total        float64 `json:"total"`
+	Count        int64   `json:"count"`
+}
+
+type topCategoriesResponse struct {
+	Status string                           `json:"status"`
+	Items  []analyticsByCategoryRowResponse `json:"items"`
 }
 
 func TestE2EHealthAndAuth(t *testing.T) {
@@ -619,5 +647,98 @@ func TestE2EFamilyMembersManage(t *testing.T) {
 	}
 	if len(members) != 1 {
 		t.Fatalf("expected 1 member, got %d", len(members))
+	}
+}
+
+func TestE2ETopCategoriesByFamily(t *testing.T) {
+	env := setupE2E(t)
+	defer env.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	user1 := "55555555-5555-5555-5555-555555555555"
+	user2 := "66666666-6666-6666-6666-666666666666"
+
+	resp, body := requestJSON(t, client, http.MethodPost, env.server.URL+"/families", user1, map[string]string{
+		"name": "Analytics Family",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	var family familyResponse
+	if err := json.Unmarshal(body, &family); err != nil {
+		t.Fatalf("decode family: %v", err)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/families/join", user2, map[string]string{
+		"code": family.Code,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/categories", user1, map[string]interface{}{
+		"name": "Food",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	var food categoryResponse
+	if err := json.Unmarshal(body, &food); err != nil {
+		t.Fatalf("decode food category: %v", err)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/categories", user1, map[string]interface{}{
+		"name": "Transport",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	var transport categoryResponse
+	if err := json.Unmarshal(body, &transport); err != nil {
+		t.Fatalf("decode transport category: %v", err)
+	}
+
+	createExpense := func(userID, title string, amount float64, categoryID string) {
+		t.Helper()
+		resp, body := requestJSON(t, client, http.MethodPost, env.server.URL+"/expenses", userID, map[string]interface{}{
+			"date":         "2026-02-10",
+			"amount":       amount,
+			"currency":     "USD",
+			"title":        title,
+			"category_ids": []string{categoryID},
+		})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+		}
+	}
+
+	createExpense(user1, "Lunch", 10, food.ID)
+	createExpense(user1, "Dinner", 15, food.ID)
+	createExpense(user1, "Taxi", 40, transport.ID)
+
+	createExpense(user2, "Food shared #1", 100, food.ID)
+	createExpense(user2, "Food shared #2", 200, food.ID)
+
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/top_categories", user1, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	var result topCategoriesResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode top categories response: %v", err)
+	}
+	if result.Status != "OK" {
+		t.Fatalf("expected status OK, got %q", result.Status)
+	}
+	if len(result.Items) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(result.Items))
+	}
+	if result.Items[0].CategoryID != food.ID || result.Items[0].Count != 4 {
+		t.Fatalf("expected family-aggregated food first, got %+v", result.Items[0])
+	}
+	if result.Items[1].CategoryID != transport.ID || result.Items[1].Count != 1 {
+		t.Fatalf("expected transport second, got %+v", result.Items[1])
 	}
 }

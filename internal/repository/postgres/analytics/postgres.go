@@ -85,6 +85,42 @@ func (r *PostgresRepository) ByCategory(ctx context.Context, familyID string, fi
 	return rows, nil
 }
 
+func (r *PostgresRepository) TopCategories(ctx context.Context, familyID string, filter analyticsdomain.TopCategoriesFilter) ([]analyticsdomain.ByCategoryRow, int64, error) {
+	readLimit := filter.DBReadLimit
+	if readLimit <= 0 {
+		readLimit = 1000
+	}
+	responseCount := filter.ResponseCount
+	if responseCount <= 0 {
+		responseCount = 5
+	}
+
+	countQuery := "SELECT COUNT(*) AS records_read FROM (SELECT 1 FROM expenses e WHERE e.family_id = ? AND e.date >= ? AND e.date <= ? ORDER BY e.date DESC, e.created_at DESC LIMIT ?) limited_expenses"
+	var countRow struct {
+		RecordsRead int64 `gorm:"column:records_read"`
+	}
+	if err := r.db.WithContext(ctx).Raw(countQuery, familyID, filter.From, filter.To, readLimit).Scan(&countRow).Error; err != nil {
+		return nil, 0, err
+	}
+
+	query := "WITH limited_expenses AS (" +
+		"SELECT e.id, e.amount FROM expenses e WHERE e.family_id = ? AND e.date >= ? AND e.date <= ? ORDER BY e.date DESC, e.created_at DESC LIMIT ?" +
+		") SELECT c.id AS category_id, c.name AS category_name, COALESCE(SUM(le.amount), 0) AS total, COUNT(le.id) AS count " +
+		"FROM limited_expenses le " +
+		"JOIN expense_categories ec ON ec.expense_id = le.id " +
+		"JOIN categories c ON c.id = ec.category_id AND c.family_id = ? " +
+		"GROUP BY c.id, c.name " +
+		"ORDER BY count DESC, total DESC " +
+		"LIMIT ?"
+
+	var rows []analyticsdomain.ByCategoryRow
+	if err := r.db.WithContext(ctx).Raw(query, familyID, filter.From, filter.To, readLimit, familyID, responseCount).Scan(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return rows, countRow.RecordsRead, nil
+}
+
 func (r *PostgresRepository) Monthly(ctx context.Context, familyID string, filter analyticsdomain.MonthlyFilter) ([]analyticsdomain.MonthlyRow, error) {
 	where, args := buildExpenseWhereRange(familyID, filter.From, filter.To, filter.Currency, filter.CategoryIDs)
 	periodExpr := "date_trunc('month', e.date::timestamp)"

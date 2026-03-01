@@ -195,6 +195,18 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/AnalyticsByCategoryRow'
+  /top_categories:
+    get:
+      summary: Top categories for current family
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopCategoriesResponse'
   /reports/monthly:
     get:
       summary: Monthly report
@@ -1789,6 +1801,17 @@ components:
           type: number
         count:
           type: integer
+    TopCategoriesResponse:
+      type: object
+      required: [status, items]
+      properties:
+        status:
+          type: string
+          enum: [OK, NEED_MORE_DATA, TOP_CATEGORIES_DISABLED]
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsByCategoryRow'
     ReportsMonthlyRow:
       type: object
       required: [month, total, count]

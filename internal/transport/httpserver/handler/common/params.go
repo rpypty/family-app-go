@@ -1,4 +1,4 @@
-package handler
+package common
 
 import (
 	"fmt"
@@ -63,4 +63,24 @@ func parseIntParam(value string, fallback int) (int, error) {
 		return 0, fmt.Errorf("invalid int")
 	}
 	return parsed, nil
+}
+
+func ParseDateRequired(value string) (time.Time, error) {
+	return parseDateRequired(value)
+}
+
+func ParseDateParam(value string) (*time.Time, error) {
+	return parseDateParam(value)
+}
+
+func ParseMonthRequired(value string) (time.Time, error) {
+	return parseMonthRequired(value)
+}
+
+func ParseCSV(value string) []string {
+	return parseCSV(value)
+}
+
+func ParseIntParam(value string, fallback int) (int, error) {
+	return parseIntParam(value, fallback)
 }

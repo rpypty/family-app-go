@@ -1,4 +1,4 @@
-package handler
+package common
 
 import (
 	"bytes"
@@ -37,6 +37,14 @@ type syncOperationRequest struct {
 type syncCreateTodoPayloadRequest struct {
 	ListID string `json:"list_id"`
 	Title  string `json:"title"`
+}
+
+type syncCreateExpensePayloadRequest struct {
+	Date        string   `json:"date"`
+	Amount      float64  `json:"amount"`
+	Currency    string   `json:"currency"`
+	Title       string   `json:"title"`
+	CategoryIDs []string `json:"category_ids"`
 }
 
 type syncSetTodoCompletedPayloadRequest struct {
@@ -181,7 +189,7 @@ func parseSyncOperation(operation syncOperationRequest) (syncdomain.OperationInp
 			return syncdomain.OperationInput{}, errors.New("local_id is required")
 		}
 
-		var payload createExpenseRequest
+		var payload syncCreateExpensePayloadRequest
 		if err := decodePayload(operation.Payload, &payload); err != nil {
 			return syncdomain.OperationInput{}, err
 		}

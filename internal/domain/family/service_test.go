@@ -8,9 +8,44 @@ import (
 )
 
 type fakeFamilyRepo struct {
-	families map[string]*Family
-	members  map[string]*FamilyMember
-	codes    map[string]string
+	families             map[string]*Family
+	members              map[string]*FamilyMember
+	codes                map[string]string
+	getFamilyByUserCalls int
+}
+
+type fakeFamilyCache struct {
+	values map[string]*Family
+}
+
+func newFakeFamilyCache() *fakeFamilyCache {
+	return &fakeFamilyCache{values: make(map[string]*Family)}
+}
+
+func (c *fakeFamilyCache) GetByUserID(userID string) (*Family, bool) {
+	family, ok := c.values[userID]
+	if !ok {
+		return nil, false
+	}
+	cloned := *family
+	return &cloned, true
+}
+
+func (c *fakeFamilyCache) SetByUserID(userID string, family *Family, _ time.Duration) {
+	if family == nil {
+		delete(c.values, userID)
+		return
+	}
+	cloned := *family
+	c.values[userID] = &cloned
+}
+
+func (c *fakeFamilyCache) DeleteByUserID(userID string) {
+	delete(c.values, userID)
+}
+
+func (c *fakeFamilyCache) Clear() {
+	c.values = make(map[string]*Family)
 }
 
 func newFakeFamilyRepo() *fakeFamilyRepo {
@@ -26,6 +61,7 @@ func (r *fakeFamilyRepo) Transaction(ctx context.Context, fn func(Repository) er
 }
 
 func (r *fakeFamilyRepo) GetFamilyByUser(ctx context.Context, userID string) (*Family, error) {
+	r.getFamilyByUserCalls++
 	member, ok := r.members[userID]
 	if !ok {
 		return nil, ErrFamilyNotFound
@@ -357,5 +393,59 @@ func TestRemoveMemberSuccess(t *testing.T) {
 	}
 	if _, ok := repo.members["user-1"]; ok {
 		t.Fatalf("expected member removed")
+	}
+}
+
+func TestGetFamilyByUserUsesCache(t *testing.T) {
+	repo := newFakeFamilyRepo()
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "owner"}
+	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleMember}
+
+	svc := NewServiceWithCache(repo, newFakeFamilyCache())
+
+	first, err := svc.GetFamilyByUser(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	second, err := svc.GetFamilyByUser(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if first.ID != second.ID {
+		t.Fatalf("expected same family id, got %s and %s", first.ID, second.ID)
+	}
+	if repo.getFamilyByUserCalls != 1 {
+		t.Fatalf("expected repo GetFamilyByUser called once, got %d", repo.getFamilyByUserCalls)
+	}
+}
+
+func TestUpdateFamilyInvalidatesCache(t *testing.T) {
+	repo := newFakeFamilyRepo()
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Old", Code: "ZXCVBN", OwnerID: "user-1"}
+	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleOwner}
+
+	svc := NewServiceWithCache(repo, newFakeFamilyCache())
+
+	if _, err := svc.GetFamilyByUser(context.Background(), "user-1"); err != nil {
+		t.Fatalf("warm cache: %v", err)
+	}
+	if repo.getFamilyByUserCalls != 1 {
+		t.Fatalf("expected 1 call after warmup, got %d", repo.getFamilyByUserCalls)
+	}
+
+	if _, err := svc.UpdateFamily(context.Background(), "user-1", "New"); err != nil {
+		t.Fatalf("update family: %v", err)
+	}
+
+	family, err := svc.GetFamilyByUser(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("get family after update: %v", err)
+	}
+	if family.Name != "New" {
+		t.Fatalf("expected updated family name, got %q", family.Name)
+	}
+	if repo.getFamilyByUserCalls != 3 {
+		t.Fatalf("expected cache invalidation and 3 total repo calls, got %d", repo.getFamilyByUserCalls)
 	}
 }

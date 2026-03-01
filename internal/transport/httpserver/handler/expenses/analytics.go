@@ -1,4 +1,4 @@
-package handler
+package expenses
 
 import (
 	"errors"
@@ -200,6 +200,35 @@ func (h *Handlers) AnalyticsByCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, rows)
+}
+
+func (h *Handlers) TopCategories(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid_token", "invalid token")
+		return
+	}
+
+	family, err := h.Families.GetFamilyByUser(r.Context(), user.ID)
+	if err != nil {
+		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+			h.log.BusinessError("analytics.top_categories: family not found", err, "user_id", user.ID)
+			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
+			return
+		}
+		h.log.InternalError("analytics.top_categories: get family failed", err, "user_id", user.ID)
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+
+	result, err := h.Analytics.TopCategories(r.Context(), family.ID)
+	if err != nil {
+		h.log.InternalError("analytics.top_categories: build report failed", err, "user_id", user.ID, "family_id", family.ID)
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handlers) ReportsMonthly(w http.ResponseWriter, r *http.Request) {

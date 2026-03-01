@@ -10,11 +10,24 @@ import (
 )
 
 type Service struct {
-	repo Repository
+	repo            Repository
+	categoriesCache CategoriesCache
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+	return NewServiceWithCategoriesCache(repo, nil)
+}
+
+const categoriesCacheTTL = 60 * time.Second
+
+func NewServiceWithCategoriesCache(repo Repository, categoriesCache CategoriesCache) *Service {
+	if categoriesCache == nil {
+		categoriesCache = noopCategoriesCache{}
+	}
+	return &Service{
+		repo:            repo,
+		categoriesCache: categoriesCache,
+	}
 }
 
 func (s *Service) ListExpenses(ctx context.Context, familyID string, filter ListFilter) ([]ExpenseWithCategories, int64, error) {
@@ -160,7 +173,17 @@ func (s *Service) DeleteExpense(ctx context.Context, familyID, expenseID string)
 }
 
 func (s *Service) ListCategories(ctx context.Context, familyID string) ([]Category, error) {
-	return s.repo.ListCategories(ctx, familyID)
+	if cached, ok := s.categoriesCache.GetByFamilyID(familyID); ok {
+		return cloneCategories(cached), nil
+	}
+
+	categories, err := s.repo.ListCategories(ctx, familyID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.categoriesCache.SetByFamilyID(familyID, categories, categoriesCacheTTL)
+	return cloneCategories(categories), nil
 }
 
 func (s *Service) CreateCategory(ctx context.Context, input CreateCategoryInput) (*Category, error) {
@@ -196,6 +219,7 @@ func (s *Service) CreateCategory(ctx context.Context, input CreateCategoryInput)
 		return nil, err
 	}
 
+	s.categoriesCache.DeleteByFamilyID(input.FamilyID)
 	return &category, nil
 }
 
@@ -238,6 +262,7 @@ func (s *Service) UpdateCategory(ctx context.Context, input UpdateCategoryInput)
 		return nil, err
 	}
 
+	s.categoriesCache.DeleteByFamilyID(input.FamilyID)
 	return category, nil
 }
 
@@ -256,6 +281,7 @@ func (s *Service) DeleteCategory(ctx context.Context, familyID, categoryID strin
 	if !deleted {
 		return ErrCategoryNotFound
 	}
+	s.categoriesCache.DeleteByFamilyID(familyID)
 	return nil
 }
 
@@ -298,6 +324,25 @@ func validateCategoryIDs(categoryIDs []string) error {
 		}
 	}
 	return nil
+}
+
+func cloneCategories(categories []Category) []Category {
+	if categories == nil {
+		return nil
+	}
+	cloned := make([]Category, len(categories))
+	for i := range categories {
+		cloned[i] = categories[i]
+		if categories[i].Color != nil {
+			color := *categories[i].Color
+			cloned[i].Color = &color
+		}
+		if categories[i].Emoji != nil {
+			emoji := *categories[i].Emoji
+			cloned[i].Emoji = &emoji
+		}
+	}
+	return cloned
 }
 
 func validateCategoryName(name string) (string, error) {

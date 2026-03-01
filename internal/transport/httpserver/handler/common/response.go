@@ -1,4 +1,4 @@
-package handler
+package common
 
 import (
 	"encoding/json"
@@ -28,4 +28,16 @@ func decodeJSON(r *http.Request, dst interface{}) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	return dec.Decode(dst)
+}
+
+func WriteError(w http.ResponseWriter, status int, code, message string) {
+	writeError(w, status, code, message)
+}
+
+func WriteJSON(w http.ResponseWriter, status int, payload interface{}) {
+	writeJSON(w, status, payload)
+}
+
+func DecodeJSON(r *http.Request, dst interface{}) error {
+	return decodeJSON(r, dst)
 }

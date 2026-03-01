@@ -1,4 +1,4 @@
-package handler
+package expenses
 
 import (
 	"encoding/json"
@@ -229,9 +229,9 @@ func (h *Handlers) UpdateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated, err := h.Expenses.UpdateCategory(r.Context(), expensesdomain.UpdateCategoryInput{
-		FamilyID: family.ID,
-		CategoryID:    categoryID,
-		Name:     req.Name,
+		FamilyID:   family.ID,
+		CategoryID: categoryID,
+		Name:       req.Name,
 		Color: expensesdomain.OptionalNullableString{
 			Set:   req.Color.Set,
 			Value: req.Color.Value,
