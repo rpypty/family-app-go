@@ -23,11 +23,12 @@ import (
 	familydomain "family-app-go/internal/domain/family"
 	todosdomain "family-app-go/internal/domain/todos"
 	userdomain "family-app-go/internal/domain/user"
-	analyticsrepo "family-app-go/internal/repository/analytics"
-	expensesrepo "family-app-go/internal/repository/expenses"
-	familyrepo "family-app-go/internal/repository/family"
-	todosrepo "family-app-go/internal/repository/todos"
-	userrepo "family-app-go/internal/repository/user"
+	inmemoryrepo "family-app-go/internal/repository/inmemory"
+	analyticsrepo "family-app-go/internal/repository/postgres/analytics"
+	expensesrepo "family-app-go/internal/repository/postgres/expenses"
+	familyrepo "family-app-go/internal/repository/postgres/family"
+	todosrepo "family-app-go/internal/repository/postgres/todos"
+	userrepo "family-app-go/internal/repository/postgres/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
 	"family-app-go/pkg/logger"
@@ -83,9 +84,9 @@ func setupE2E(t *testing.T) *testEnv {
 	}
 
 	familyRepo := familyrepo.NewPostgres(dbConn)
-	familyService := familydomain.NewService(familyRepo)
+	familyService := familydomain.NewServiceWithCache(familyRepo, inmemoryrepo.NewInMemoryFamilyCache())
 	expensesRepo := expensesrepo.NewPostgres(dbConn)
-	expensesService := expensesdomain.NewService(expensesRepo)
+	expensesService := expensesdomain.NewServiceWithCategoriesCache(expensesRepo, inmemoryrepo.NewInMemoryCategoriesCache())
 	analyticsRepo := analyticsrepo.NewPostgres(dbConn)
 	analyticsService := analyticsdomain.NewServiceWithTopCategoriesConfig(analyticsRepo, analyticsdomain.TopCategoriesConfig{
 		Enabled:       cfg.TopCategories.Enabled,

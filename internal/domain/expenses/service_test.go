@@ -12,9 +12,34 @@ import (
 const categoryID1 = "11111111-1111-1111-1111-111111111111"
 
 type fakeExpensesRepo struct {
-	expenses          map[string]*Expense
-	categories        map[string]*Category
-	expenseCategories map[string][]string
+	expenses            map[string]*Expense
+	categories          map[string]*Category
+	expenseCategories   map[string][]string
+	listCategoriesCalls int
+}
+
+type fakeCategoriesCache struct {
+	values map[string][]Category
+}
+
+func newFakeCategoriesCache() *fakeCategoriesCache {
+	return &fakeCategoriesCache{values: make(map[string][]Category)}
+}
+
+func (c *fakeCategoriesCache) GetByFamilyID(familyID string) ([]Category, bool) {
+	categories, ok := c.values[familyID]
+	if !ok {
+		return nil, false
+	}
+	return append([]Category{}, categories...), true
+}
+
+func (c *fakeCategoriesCache) SetByFamilyID(familyID string, categories []Category, _ time.Duration) {
+	c.values[familyID] = append([]Category{}, categories...)
+}
+
+func (c *fakeCategoriesCache) DeleteByFamilyID(familyID string) {
+	delete(c.values, familyID)
 }
 
 func newFakeExpensesRepo() *fakeExpensesRepo {
@@ -127,6 +152,7 @@ func (r *fakeExpensesRepo) CountCategoriesByIDs(ctx context.Context, familyID st
 }
 
 func (r *fakeExpensesRepo) ListCategories(ctx context.Context, familyID string) ([]Category, error) {
+	r.listCategoriesCalls++
 	result := make([]Category, 0)
 	for _, category := range r.categories {
 		if category.FamilyID == familyID {
@@ -198,7 +224,7 @@ func (r *fakeExpensesRepo) CountExpenseCategoriesByCategoryID(ctx context.Contex
 func TestCreateExpenseSuccess(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	repo.categories[categoryID1] = &Category{ID: categoryID1, FamilyID: "fam-1", Name: "Food"}
-	svc := NewService(repo)
+	svc := NewServiceWithCategoriesCache(repo, newFakeCategoriesCache())
 
 	input := CreateExpenseInput{
 		FamilyID:    "fam-1",
@@ -564,6 +590,119 @@ func TestCreateCategoryInvalidEmoji(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidCategoryEmoji) {
 		t.Fatalf("expected ErrInvalidCategoryEmoji, got %v", err)
+	}
+}
+
+func TestListCategoriesUsesCache(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.categories[categoryID1] = &Category{ID: categoryID1, FamilyID: "fam-1", Name: "Food"}
+	svc := NewServiceWithCategoriesCache(repo, newFakeCategoriesCache())
+
+	first, err := svc.ListCategories(context.Background(), "fam-1")
+	if err != nil {
+		t.Fatalf("first list: %v", err)
+	}
+	second, err := svc.ListCategories(context.Background(), "fam-1")
+	if err != nil {
+		t.Fatalf("second list: %v", err)
+	}
+
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("expected one category on both calls")
+	}
+	if repo.listCategoriesCalls != 1 {
+		t.Fatalf("expected repo list called once, got %d", repo.listCategoriesCalls)
+	}
+}
+
+func TestCreateCategoryInvalidatesCategoriesCache(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.categories[categoryID1] = &Category{ID: categoryID1, FamilyID: "fam-1", Name: "Food"}
+	svc := NewServiceWithCategoriesCache(repo, newFakeCategoriesCache())
+
+	if _, err := svc.ListCategories(context.Background(), "fam-1"); err != nil {
+		t.Fatalf("warm cache: %v", err)
+	}
+	if repo.listCategoriesCalls != 1 {
+		t.Fatalf("expected one repo list call after warmup, got %d", repo.listCategoriesCalls)
+	}
+
+	if _, err := svc.CreateCategory(context.Background(), CreateCategoryInput{
+		FamilyID: "fam-1",
+		Name:     "Transport",
+	}); err != nil {
+		t.Fatalf("create category: %v", err)
+	}
+
+	categories, err := svc.ListCategories(context.Background(), "fam-1")
+	if err != nil {
+		t.Fatalf("list after create: %v", err)
+	}
+	if len(categories) != 2 {
+		t.Fatalf("expected 2 categories after create, got %d", len(categories))
+	}
+	if repo.listCategoriesCalls != 2 {
+		t.Fatalf("expected cache invalidation and second repo list call, got %d", repo.listCategoriesCalls)
+	}
+}
+
+func TestUpdateCategoryInvalidatesCategoriesCache(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.categories[categoryID1] = &Category{ID: categoryID1, FamilyID: "fam-1", Name: "Food"}
+	svc := NewServiceWithCategoriesCache(repo, newFakeCategoriesCache())
+
+	if _, err := svc.ListCategories(context.Background(), "fam-1"); err != nil {
+		t.Fatalf("warm cache: %v", err)
+	}
+	if repo.listCategoriesCalls != 1 {
+		t.Fatalf("expected one repo list call after warmup, got %d", repo.listCategoriesCalls)
+	}
+
+	if _, err := svc.UpdateCategory(context.Background(), UpdateCategoryInput{
+		FamilyID:   "fam-1",
+		CategoryID: categoryID1,
+		Name:       "Food Updated",
+	}); err != nil {
+		t.Fatalf("update category: %v", err)
+	}
+
+	categories, err := svc.ListCategories(context.Background(), "fam-1")
+	if err != nil {
+		t.Fatalf("list after update: %v", err)
+	}
+	if len(categories) != 1 || categories[0].Name != "Food Updated" {
+		t.Fatalf("expected updated category name, got %+v", categories)
+	}
+	if repo.listCategoriesCalls != 2 {
+		t.Fatalf("expected cache invalidation and second repo list call, got %d", repo.listCategoriesCalls)
+	}
+}
+
+func TestDeleteCategoryInvalidatesCategoriesCache(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.categories[categoryID1] = &Category{ID: categoryID1, FamilyID: "fam-1", Name: "Food"}
+	svc := NewService(repo)
+
+	if _, err := svc.ListCategories(context.Background(), "fam-1"); err != nil {
+		t.Fatalf("warm cache: %v", err)
+	}
+	if repo.listCategoriesCalls != 1 {
+		t.Fatalf("expected one repo list call after warmup, got %d", repo.listCategoriesCalls)
+	}
+
+	if err := svc.DeleteCategory(context.Background(), "fam-1", categoryID1); err != nil {
+		t.Fatalf("delete category: %v", err)
+	}
+
+	categories, err := svc.ListCategories(context.Background(), "fam-1")
+	if err != nil {
+		t.Fatalf("list after delete: %v", err)
+	}
+	if len(categories) != 0 {
+		t.Fatalf("expected zero categories after delete, got %+v", categories)
+	}
+	if repo.listCategoriesCalls != 2 {
+		t.Fatalf("expected cache invalidation and second repo list call, got %d", repo.listCategoriesCalls)
 	}
 }
 

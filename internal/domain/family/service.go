@@ -6,23 +6,45 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 )
 
 const (
 	familyCodeLength   = 6
 	familyCodeAttempts = 10
+	familyCacheTTL     = 60 * time.Second
 )
 
 type Service struct {
-	repo Repository
+	repo  Repository
+	cache Cache
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+	return NewServiceWithCache(repo, nil)
+}
+
+func NewServiceWithCache(repo Repository, cache Cache) *Service {
+	if cache == nil {
+		cache = noopCache{}
+	}
+	return &Service{
+		repo:  repo,
+		cache: cache,
+	}
 }
 
 func (s *Service) GetFamilyByUser(ctx context.Context, userID string) (*Family, error) {
-	return s.repo.GetFamilyByUser(ctx, userID)
+	if cached, ok := s.cache.GetByUserID(userID); ok {
+		return cloneFamily(cached), nil
+	}
+
+	family, err := s.repo.GetFamilyByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	s.cache.SetByUserID(userID, family, familyCacheTTL)
+	return cloneFamily(family), nil
 }
 
 func (s *Service) CreateFamily(ctx context.Context, userID, name string) (*Family, error) {
@@ -77,6 +99,7 @@ func (s *Service) CreateFamily(ctx context.Context, userID, name string) (*Famil
 		return nil, err
 	}
 
+	s.cache.Clear()
 	return &result, nil
 }
 
@@ -117,11 +140,12 @@ func (s *Service) JoinFamily(ctx context.Context, userID, code string) (*Family,
 		return nil, err
 	}
 
+	s.cache.Clear()
 	return &result, nil
 }
 
 func (s *Service) LeaveFamily(ctx context.Context, userID string) error {
-	return s.repo.Transaction(ctx, func(tx Repository) error {
+	err := s.repo.Transaction(ctx, func(tx Repository) error {
 		member, err := tx.GetMemberByUser(ctx, userID)
 		if err != nil {
 			return err
@@ -160,6 +184,11 @@ func (s *Service) LeaveFamily(ctx context.Context, userID string) error {
 
 		return tx.DeleteMember(ctx, member.FamilyID, userID)
 	})
+	if err != nil {
+		return err
+	}
+	s.cache.Clear()
+	return nil
 }
 
 func (s *Service) UpdateFamily(ctx context.Context, userID, name string) (*Family, error) {
@@ -178,11 +207,12 @@ func (s *Service) UpdateFamily(ctx context.Context, userID, name string) (*Famil
 	}
 
 	family.Name = name
-	return family, nil
+	s.cache.Clear()
+	return cloneFamily(family), nil
 }
 
 func (s *Service) ListMembers(ctx context.Context, userID string) ([]FamilyMember, error) {
-	family, err := s.repo.GetFamilyByUser(ctx, userID)
+	family, err := s.GetFamilyByUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +221,7 @@ func (s *Service) ListMembers(ctx context.Context, userID string) ([]FamilyMembe
 }
 
 func (s *Service) ListMembersWithProfiles(ctx context.Context, userID string) ([]FamilyMemberProfile, error) {
-	family, err := s.repo.GetFamilyByUser(ctx, userID)
+	family, err := s.GetFamilyByUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +234,7 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, memberID string) er
 		return fmt.Errorf("member id is required")
 	}
 
-	return s.repo.Transaction(ctx, func(tx Repository) error {
+	err := s.repo.Transaction(ctx, func(tx Repository) error {
 		actor, err := tx.GetMemberByUser(ctx, actorID)
 		if err != nil {
 			return err
@@ -223,6 +253,19 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, memberID string) er
 
 		return tx.DeleteMember(ctx, actor.FamilyID, memberID)
 	})
+	if err != nil {
+		return err
+	}
+	s.cache.Clear()
+	return nil
+}
+
+func cloneFamily(family *Family) *Family {
+	if family == nil {
+		return nil
+	}
+	cloned := *family
+	return &cloned
 }
 
 func generateUniqueCode(ctx context.Context, repo Repository) (string, error) {

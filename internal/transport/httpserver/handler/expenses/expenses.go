@@ -1,4 +1,4 @@
-package handler
+package expenses
 
 import (
 	"errors"

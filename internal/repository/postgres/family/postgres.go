@@ -86,11 +86,11 @@ func (r *PostgresRepository) ListMembers(ctx context.Context, familyID string) (
 
 func (r *PostgresRepository) ListMembersWithProfiles(ctx context.Context, familyID string) ([]familydomain.FamilyMemberProfile, error) {
 	type memberRow struct {
-		UserID    string     `gorm:"column:user_id"`
-		Role      string     `gorm:"column:role"`
-		JoinedAt  time.Time  `gorm:"column:joined_at"`
-		Email     *string    `gorm:"column:email"`
-		AvatarURL *string    `gorm:"column:avatar_url"`
+		UserID    string    `gorm:"column:user_id"`
+		Role      string    `gorm:"column:role"`
+		JoinedAt  time.Time `gorm:"column:joined_at"`
+		Email     *string   `gorm:"column:email"`
+		AvatarURL *string   `gorm:"column:avatar_url"`
 	}
 
 	var rows []memberRow
