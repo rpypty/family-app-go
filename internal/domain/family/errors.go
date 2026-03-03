@@ -10,4 +10,7 @@ var (
 	ErrNotOwner             = errors.New("not owner")
 	ErrCannotRemoveOwner    = errors.New("cannot remove owner")
 	ErrCodeGenerationFailed = errors.New("family code generation failed")
+	ErrInvalidFamilyName    = errors.New("invalid family name")
+	ErrInvalidCurrency      = errors.New("invalid currency")
+	ErrNoFieldsToUpdate     = errors.New("no fields to update")
 )

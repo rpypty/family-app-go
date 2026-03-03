@@ -13,6 +13,7 @@ type Repository interface {
 	CreateFamily(ctx context.Context, family *Family) error
 	AddMember(ctx context.Context, member *FamilyMember) error
 	UpdateFamilyName(ctx context.Context, familyID, name string) error
+	UpdateFamilyDefaultCurrency(ctx context.Context, familyID, currency string) error
 	UpdateFamilyOwner(ctx context.Context, familyID, ownerID string) error
 	UpdateMemberRole(ctx context.Context, familyID, userID, role string) error
 	DeleteFamily(ctx context.Context, familyID string) error

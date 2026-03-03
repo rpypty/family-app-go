@@ -300,7 +300,7 @@ paths:
         '404':
           $ref: '#/components/responses/FamilyNotFound'
     patch:
-      summary: Update family name
+      summary: Update family settings
       security:
         - bearerAuth: []
       requestBody:
@@ -1454,7 +1454,7 @@ components:
           nullable: true
     Family:
       type: object
-      required: [id, name, code, owner_id, created_at]
+      required: [id, name, code, owner_id, default_currency, created_at]
       properties:
         id:
           type: string
@@ -1464,6 +1464,11 @@ components:
           type: string
         owner_id:
           type: string
+        default_currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: '^[A-Z]{3}$'
         created_at:
           type: string
           format: date-time
@@ -1868,10 +1873,17 @@ components:
           type: string
     UpdateFamilyRequest:
       type: object
-      required: [name]
+      anyOf:
+        - required: [name]
+        - required: [default_currency]
       properties:
         name:
           type: string
+        default_currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: '^[A-Za-z]{3}$'
     CreateExpenseRequest:
       type: object
       required: [date, amount, currency, title]
