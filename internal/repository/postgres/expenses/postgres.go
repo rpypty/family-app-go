@@ -30,6 +30,9 @@ func (r *PostgresRepository) ListExpenses(ctx context.Context, familyID string, 
 	if filter.To != nil {
 		query = query.Where("date <= ?", *filter.To)
 	}
+	if filter.Currency != "" {
+		query = query.Where("currency = ?", filter.Currency)
+	}
 	if len(filter.CategoryIDs) > 0 {
 		query = query.Joins("join expense_categories on expense_categories.expense_id = expenses.id").Where("expense_categories.category_id IN ?", filter.CategoryIDs)
 	}
@@ -86,11 +89,16 @@ func (r *PostgresRepository) UpdateExpense(ctx context.Context, expense *expense
 		Model(&expensesdomain.Expense{}).
 		Where("id = ? AND family_id = ?", expense.ID, expense.FamilyID).
 		Updates(map[string]interface{}{
-			"date":       expense.Date,
-			"amount":     expense.Amount,
-			"currency":   expense.Currency,
-			"title":      expense.Title,
-			"updated_at": expense.UpdatedAt,
+			"date":           expense.Date,
+			"amount":         expense.Amount,
+			"currency":       expense.Currency,
+			"base_currency":  expense.BaseCurrency,
+			"exchange_rate":  expense.ExchangeRate,
+			"amount_in_base": expense.AmountInBase,
+			"rate_date":      expense.RateDate,
+			"rate_source":    expense.RateSource,
+			"title":          expense.Title,
+			"updated_at":     expense.UpdatedAt,
 		}).Error
 }
 

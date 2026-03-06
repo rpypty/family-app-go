@@ -46,7 +46,7 @@ func (h *Handlers) AnalyticsSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currency := strings.TrimSpace(query.Get("currency"))
+	currency, useBaseAmount := resolveAnalyticsCurrency(query.Get("currency"), family.DefaultCurrency)
 	categoryIDs := parseCSV(query.Get("category_ids"))
 	_, err = normalizeTimezone(query.Get("timezone"))
 	if err != nil {
@@ -55,10 +55,11 @@ func (h *Handlers) AnalyticsSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.Analytics.Summary(r.Context(), family.ID, analyticsdomain.SummaryFilter{
-		From:        from,
-		To:          to,
-		Currency:    currency,
-		CategoryIDs: categoryIDs,
+		From:          from,
+		To:            to,
+		Currency:      currency,
+		UseBaseAmount: useBaseAmount,
+		CategoryIDs:   categoryIDs,
 	})
 	if err != nil {
 		h.log.InternalError("analytics.summary: build summary failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -117,7 +118,7 @@ func (h *Handlers) AnalyticsTimeseries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currency := strings.TrimSpace(query.Get("currency"))
+	currency, useBaseAmount := resolveAnalyticsCurrency(query.Get("currency"), family.DefaultCurrency)
 	categoryIDs := parseCSV(query.Get("category_ids"))
 	tz, err := normalizeTimezone(query.Get("timezone"))
 	if err != nil {
@@ -126,12 +127,13 @@ func (h *Handlers) AnalyticsTimeseries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.Analytics.Timeseries(r.Context(), family.ID, analyticsdomain.TimeseriesFilter{
-		From:        from,
-		To:          to,
-		GroupBy:     groupBy,
-		Currency:    currency,
-		CategoryIDs: categoryIDs,
-		Timezone:    tz,
+		From:          from,
+		To:            to,
+		GroupBy:       groupBy,
+		Currency:      currency,
+		UseBaseAmount: useBaseAmount,
+		CategoryIDs:   categoryIDs,
+		Timezone:      tz,
 	})
 	if err != nil {
 		h.log.InternalError("analytics.timeseries: build timeseries failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -183,15 +185,16 @@ func (h *Handlers) AnalyticsByCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currency := strings.TrimSpace(query.Get("currency"))
+	currency, useBaseAmount := resolveAnalyticsCurrency(query.Get("currency"), family.DefaultCurrency)
 	categoryIDs := parseCSV(query.Get("category_ids"))
 
 	rows, err := h.Analytics.ByCategory(r.Context(), family.ID, analyticsdomain.ByCategoryFilter{
-		From:        from,
-		To:          to,
-		Currency:    currency,
-		CategoryIDs: categoryIDs,
-		Limit:       limit,
+		From:          from,
+		To:            to,
+		Currency:      currency,
+		UseBaseAmount: useBaseAmount,
+		CategoryIDs:   categoryIDs,
+		Limit:         limit,
 	})
 	if err != nil {
 		h.log.InternalError("analytics.by_category: build report failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -269,14 +272,15 @@ func (h *Handlers) ReportsMonthly(w http.ResponseWriter, r *http.Request) {
 	from := time.Date(fromMonth.Year(), fromMonth.Month(), 1, 0, 0, 0, 0, time.UTC)
 	toExclusive := time.Date(toMonth.Year(), toMonth.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
 
-	currency := strings.TrimSpace(query.Get("currency"))
+	currency, useBaseAmount := resolveAnalyticsCurrency(query.Get("currency"), family.DefaultCurrency)
 	categoryIDs := parseCSV(query.Get("category_ids"))
 
 	rows, err := h.Analytics.Monthly(r.Context(), family.ID, analyticsdomain.MonthlyFilter{
-		From:        from,
-		To:          toExclusive,
-		Currency:    currency,
-		CategoryIDs: categoryIDs,
+		From:          from,
+		To:            toExclusive,
+		Currency:      currency,
+		UseBaseAmount: useBaseAmount,
+		CategoryIDs:   categoryIDs,
 	})
 	if err != nil {
 		h.log.InternalError("reports.monthly: build report failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -333,16 +337,17 @@ func (h *Handlers) ReportsCompare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currency := strings.TrimSpace(query.Get("currency"))
+	currency, useBaseAmount := resolveAnalyticsCurrency(query.Get("currency"), family.DefaultCurrency)
 	categoryIDs := parseCSV(query.Get("category_ids"))
 
 	result, err := h.Analytics.Compare(r.Context(), family.ID, analyticsdomain.CompareFilter{
-		FromA:       fromA,
-		ToA:         toA,
-		FromB:       fromB,
-		ToB:         toB,
-		Currency:    currency,
-		CategoryIDs: categoryIDs,
+		FromA:         fromA,
+		ToA:           toA,
+		FromB:         fromB,
+		ToB:           toB,
+		Currency:      currency,
+		UseBaseAmount: useBaseAmount,
+		CategoryIDs:   categoryIDs,
 	})
 	if err != nil {
 		h.log.InternalError("reports.compare: build report failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -363,4 +368,12 @@ func normalizeTimezone(value string) (string, error) {
 		return "", err
 	}
 	return value, nil
+}
+
+func resolveAnalyticsCurrency(value, familyDefault string) (string, bool) {
+	currency := strings.ToUpper(strings.TrimSpace(value))
+	if currency == "" {
+		return strings.ToUpper(strings.TrimSpace(familyDefault)), true
+	}
+	return currency, false
 }

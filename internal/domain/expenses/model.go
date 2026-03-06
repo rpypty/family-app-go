@@ -3,15 +3,20 @@ package expenses
 import "time"
 
 type Expense struct {
-	ID        string    `gorm:"type:uuid;primaryKey"`
-	FamilyID  string    `gorm:"type:uuid;index;not null"`
-	UserID    string    `gorm:"type:uuid;index;not null"`
-	Date      time.Time `gorm:"type:date;not null"`
-	Amount    float64   `gorm:"type:numeric(12,2);not null"`
-	Currency  string    `gorm:"size:3;not null"`
-	Title     string    `gorm:"not null"`
-	CreatedAt time.Time `gorm:"autoCreateTime"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+	ID           string     `gorm:"type:uuid;primaryKey"`
+	FamilyID     string     `gorm:"type:uuid;index;not null"`
+	UserID       string     `gorm:"type:uuid;index;not null"`
+	Date         time.Time  `gorm:"type:date;not null"`
+	Amount       float64    `gorm:"type:numeric(12,2);not null"`
+	Currency     string     `gorm:"size:3;not null"`
+	BaseCurrency *string    `gorm:"size:3"`
+	ExchangeRate *float64   `gorm:"type:numeric(18,8)"`
+	AmountInBase *float64   `gorm:"type:numeric(14,2)"`
+	RateDate     *time.Time `gorm:"type:date"`
+	RateSource   *string    `gorm:"type:text"`
+	Title        string     `gorm:"not null"`
+	CreatedAt    time.Time  `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time  `gorm:"autoUpdateTime"`
 }
 
 type Category struct {
@@ -36,29 +41,32 @@ type ExpenseWithCategories struct {
 type ListFilter struct {
 	From        *time.Time
 	To          *time.Time
+	Currency    string
 	CategoryIDs []string
 	Limit       int
 	Offset      int
 }
 
 type CreateExpenseInput struct {
-	FamilyID    string
-	UserID      string
-	Date        time.Time
-	Amount      float64
-	Currency    string
-	Title       string
-	CategoryIDs []string
+	FamilyID     string
+	UserID       string
+	Date         time.Time
+	Amount       float64
+	Currency     string
+	BaseCurrency string
+	Title        string
+	CategoryIDs  []string
 }
 
 type UpdateExpenseInput struct {
-	ID          string
-	FamilyID    string
-	Date        time.Time
-	Amount      float64
-	Currency    string
-	Title       string
-	CategoryIDs []string
+	ID           string
+	FamilyID     string
+	Date         time.Time
+	Amount       float64
+	Currency     string
+	BaseCurrency string
+	Title        string
+	CategoryIDs  []string
 }
 
 type CreateCategoryInput struct {

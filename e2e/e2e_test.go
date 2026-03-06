@@ -21,6 +21,7 @@ import (
 	analyticsdomain "family-app-go/internal/domain/analytics"
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
+	ratesdomain "family-app-go/internal/domain/rates"
 	todosdomain "family-app-go/internal/domain/todos"
 	userdomain "family-app-go/internal/domain/user"
 	inmemoryrepo "family-app-go/internal/repository/inmemory"
@@ -39,6 +40,30 @@ type testEnv struct {
 	server     *httptest.Server
 	authServer *httptest.Server
 	db         *gorm.DB
+}
+
+type e2eRatesProvider struct{}
+
+func (e2eRatesProvider) ListCurrencies(_ context.Context) ([]ratesdomain.Currency, error) {
+	return []ratesdomain.Currency{
+		{Code: "BYN", Name: "Belarusian Ruble", Icon: "🇧🇾"},
+		{Code: "USD", Name: "US Dollar", Icon: "🇺🇸"},
+		{Code: "EUR", Name: "Euro", Icon: "🇪🇺"},
+		{Code: "RUB", Name: "Russian Ruble", Icon: "🇷🇺"},
+	}, nil
+}
+
+func (e2eRatesProvider) GetBYNRate(_ context.Context, currency string, onDate time.Time) (ratesdomain.BYNRate, error) {
+	switch strings.ToUpper(strings.TrimSpace(currency)) {
+	case "USD":
+		return ratesdomain.BYNRate{Code: "USD", Date: onDate, Scale: 1, Rate: 3.2}, nil
+	case "EUR":
+		return ratesdomain.BYNRate{Code: "EUR", Date: onDate, Scale: 1, Rate: 3.5}, nil
+	case "RUB":
+		return ratesdomain.BYNRate{Code: "RUB", Date: onDate, Scale: 100, Rate: 3.6}, nil
+	default:
+		return ratesdomain.BYNRate{}, ratesdomain.ErrRateNotAvailable
+	}
 }
 
 func setupE2E(t *testing.T) *testEnv {
@@ -86,7 +111,12 @@ func setupE2E(t *testing.T) *testEnv {
 	familyRepo := familyrepo.NewPostgres(dbConn)
 	familyService := familydomain.NewServiceWithCache(familyRepo, inmemoryrepo.NewInMemoryFamilyCache())
 	expensesRepo := expensesrepo.NewPostgres(dbConn)
-	expensesService := expensesdomain.NewServiceWithCategoriesCache(expensesRepo, inmemoryrepo.NewInMemoryCategoriesCache())
+	ratesService := ratesdomain.NewService(e2eRatesProvider{}, ratesdomain.Config{
+		RateCacheTTL:       time.Minute,
+		CurrenciesCacheTTL: time.Minute,
+		FallbackDays:       0,
+	})
+	expensesService := expensesdomain.NewServiceWithDependencies(expensesRepo, inmemoryrepo.NewInMemoryCategoriesCache(), ratesService)
 	analyticsRepo := analyticsrepo.NewPostgres(dbConn)
 	analyticsService := analyticsdomain.NewServiceWithTopCategoriesConfig(analyticsRepo, analyticsdomain.TopCategoriesConfig{
 		Enabled:       cfg.TopCategories.Enabled,
@@ -100,7 +130,7 @@ func setupE2E(t *testing.T) *testEnv {
 	userService := userdomain.NewService(userRepo)
 	todosRepo := todosrepo.NewPostgres(dbConn)
 	todosService := todosdomain.NewService(todosRepo)
-	handlers := handler.New(analyticsService, familyService, expensesService, todosService, nil, nil, log)
+	handlers := handler.New(analyticsService, familyService, expensesService, ratesService, todosService, nil, nil, log)
 
 	router := httpserver.NewRouter(cfg, handlers, userService, log)
 	server := httptest.NewServer(router)
@@ -231,11 +261,12 @@ type authMeResponse struct {
 }
 
 type familyResponse struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Code      string    `json:"code"`
-	OwnerID   string    `json:"owner_id"`
-	CreatedAt time.Time `json:"created_at"`
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Code            string    `json:"code"`
+	OwnerID         string    `json:"owner_id"`
+	DefaultCurrency string    `json:"default_currency"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type familyMemberResponse struct {
@@ -247,16 +278,21 @@ type familyMemberResponse struct {
 }
 
 type expenseResponse struct {
-	ID          string    `json:"id"`
-	FamilyID    string    `json:"family_id"`
-	UserID      string    `json:"user_id"`
-	Date        string    `json:"date"`
-	Amount      float64   `json:"amount"`
-	Currency    string    `json:"currency"`
-	Title       string    `json:"title"`
-	CategoryIDs []string  `json:"category_ids"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	FamilyID     string    `json:"family_id"`
+	UserID       string    `json:"user_id"`
+	Date         string    `json:"date"`
+	Amount       float64   `json:"amount"`
+	Currency     string    `json:"currency"`
+	BaseCurrency *string   `json:"base_currency"`
+	ExchangeRate *float64  `json:"exchange_rate"`
+	AmountInBase *float64  `json:"amount_in_base"`
+	RateDate     *string   `json:"rate_date"`
+	RateSource   *string   `json:"rate_source"`
+	Title        string    `json:"title"`
+	CategoryIDs  []string  `json:"category_ids"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type expenseListResponse struct {
@@ -282,6 +318,23 @@ type analyticsByCategoryRowResponse struct {
 type topCategoriesResponse struct {
 	Status string                           `json:"status"`
 	Items  []analyticsByCategoryRowResponse `json:"items"`
+}
+
+type analyticsSummaryResponse struct {
+	TotalAmount float64 `json:"total_amount"`
+	Currency    string  `json:"currency"`
+	Count       int64   `json:"count"`
+	AvgPerDay   float64 `json:"avg_per_day"`
+	From        string  `json:"from"`
+	To          string  `json:"to"`
+}
+
+type exchangeRateResponse struct {
+	From   string  `json:"from"`
+	To     string  `json:"to"`
+	Date   string  `json:"date"`
+	Rate   float64 `json:"rate"`
+	Source string  `json:"source"`
 }
 
 func TestE2EHealthAndAuth(t *testing.T) {
@@ -568,6 +621,214 @@ func TestE2EExpensesAndCategoriesFlow(t *testing.T) {
 	resp, body = requestJSON(t, client, http.MethodDelete, env.server.URL+"/categories/"+category.ID, user1, nil)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestE2ERatesEndpoints(t *testing.T) {
+	env := setupE2E(t)
+	defer env.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	user := "77777777-7777-7777-7777-777777777777"
+
+	resp, body := requestJSON(t, client, http.MethodGet, env.server.URL+"/currencies", user, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	var currencies []struct {
+		Code string `json:"code"`
+		Name string `json:"name"`
+		Icon string `json:"icon"`
+	}
+	if err := json.Unmarshal(body, &currencies); err != nil {
+		t.Fatalf("decode currencies: %v", err)
+	}
+	if len(currencies) == 0 {
+		t.Fatalf("expected non-empty currencies")
+	}
+	hasBYN := false
+	hasUSD := false
+	for _, item := range currencies {
+		if item.Code == "BYN" {
+			hasBYN = true
+			if item.Icon == "" {
+				t.Fatalf("expected BYN icon")
+			}
+		}
+		if item.Code == "USD" {
+			hasUSD = true
+			if item.Icon == "" {
+				t.Fatalf("expected USD icon")
+			}
+		}
+	}
+	if !hasBYN || !hasUSD {
+		t.Fatalf("expected BYN and USD in currencies, got %+v", currencies)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/exchange-rates?from=USD&to=BYN&date=2026-02-10", user, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	var rate exchangeRateResponse
+	if err := json.Unmarshal(body, &rate); err != nil {
+		t.Fatalf("decode exchange rate: %v", err)
+	}
+	if rate.From != "USD" || rate.To != "BYN" || rate.Date != "2026-02-10" {
+		t.Fatalf("unexpected rate payload: %+v", rate)
+	}
+	if rate.Rate != 3.2 {
+		t.Fatalf("expected rate 3.2, got %v", rate.Rate)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/exchange-rates?from=GBP&to=BYN&date=2026-02-10", user, nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", resp.StatusCode, string(body))
+	}
+	var errResp errorEnvelope
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != "rate_not_available" {
+		t.Fatalf("expected rate_not_available, got %q", errResp.Error.Code)
+	}
+}
+
+func TestE2EExpenseConversionAndAnalyticsModes(t *testing.T) {
+	env := setupE2E(t)
+	defer env.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	user := "88888888-8888-8888-8888-888888888888"
+
+	resp, body := requestJSON(t, client, http.MethodPost, env.server.URL+"/families", user, map[string]string{
+		"name": "Conversion Family",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	var family familyResponse
+	if err := json.Unmarshal(body, &family); err != nil {
+		t.Fatalf("decode family: %v", err)
+	}
+	if family.DefaultCurrency != "USD" {
+		t.Fatalf("expected default currency USD, got %q", family.DefaultCurrency)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/expenses", user, map[string]interface{}{
+		"date":     "2026-02-10",
+		"amount":   32.0,
+		"currency": "BYN",
+		"title":    "BYN expense",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	var bynExpense expenseResponse
+	if err := json.Unmarshal(body, &bynExpense); err != nil {
+		t.Fatalf("decode BYN expense: %v", err)
+	}
+	if bynExpense.BaseCurrency == nil || *bynExpense.BaseCurrency != "USD" {
+		t.Fatalf("expected base currency USD, got %+v", bynExpense.BaseCurrency)
+	}
+	if bynExpense.ExchangeRate == nil || *bynExpense.ExchangeRate != 0.3125 {
+		t.Fatalf("expected exchange rate 0.3125, got %+v", bynExpense.ExchangeRate)
+	}
+	if bynExpense.AmountInBase == nil || *bynExpense.AmountInBase != 10 {
+		t.Fatalf("expected amount_in_base 10, got %+v", bynExpense.AmountInBase)
+	}
+	if bynExpense.RateSource == nil || *bynExpense.RateSource != "nbrb" {
+		t.Fatalf("expected rate source nbrb, got %+v", bynExpense.RateSource)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/expenses", user, map[string]interface{}{
+		"date":     "2026-02-10",
+		"amount":   5.0,
+		"currency": "USD",
+		"title":    "USD expense",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/expenses?currency=USD", user, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	var expensesList expenseListResponse
+	if err := json.Unmarshal(body, &expensesList); err != nil {
+		t.Fatalf("decode expenses list: %v", err)
+	}
+	if expensesList.Total != 1 || len(expensesList.Items) != 1 || expensesList.Items[0].Currency != "USD" {
+		t.Fatalf("expected single USD expense, got %+v", expensesList)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/analytics/summary?from=2026-02-10&to=2026-02-10", user, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	var summary analyticsSummaryResponse
+	if err := json.Unmarshal(body, &summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if summary.Currency != "USD" {
+		t.Fatalf("expected summary currency USD, got %q", summary.Currency)
+	}
+	if summary.TotalAmount != 15 {
+		t.Fatalf("expected total 15, got %v", summary.TotalAmount)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodGet, env.server.URL+"/analytics/summary?from=2026-02-10&to=2026-02-10&currency=BYN", user, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+	if err := json.Unmarshal(body, &summary); err != nil {
+		t.Fatalf("decode BYN summary: %v", err)
+	}
+	if summary.Currency != "BYN" {
+		t.Fatalf("expected summary currency BYN, got %q", summary.Currency)
+	}
+	if summary.TotalAmount != 32 {
+		t.Fatalf("expected total 32 for BYN filter, got %v", summary.TotalAmount)
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPost, env.server.URL+"/expenses", user, map[string]interface{}{
+		"date":     "2026-02-10",
+		"amount":   10.0,
+		"currency": "GBP",
+		"title":    "GBP expense",
+	})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestE2EDefaultCurrencyLocked(t *testing.T) {
+	env := setupE2E(t)
+	defer env.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	user := "99999999-9999-9999-9999-999999999999"
+
+	resp, body := requestJSON(t, client, http.MethodPost, env.server.URL+"/families", user, map[string]string{
+		"name": "Locked Currency Family",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	resp, body = requestJSON(t, client, http.MethodPatch, env.server.URL+"/families/me", user, map[string]string{
+		"default_currency": "BYN",
+	})
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", resp.StatusCode, string(body))
+	}
+	var errResp errorEnvelope
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp.Error.Code != "base_currency_locked" {
+		t.Fatalf("expected base_currency_locked, got %q", errResp.Error.Code)
 	}
 }
 

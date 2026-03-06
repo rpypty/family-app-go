@@ -9,4 +9,5 @@ var (
 	ErrCategoryNameTaken    = errors.New("category name already exists")
 	ErrInvalidCategoryColor = errors.New("invalid category color")
 	ErrInvalidCategoryEmoji = errors.New("invalid category emoji")
+	ErrRateNotAvailable     = errors.New("rate not available")
 )

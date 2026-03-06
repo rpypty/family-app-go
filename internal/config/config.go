@@ -14,6 +14,7 @@ type Config struct {
 	Env                string
 	OfflineSyncEnabled bool
 	TopCategories      TopCategoriesConfig
+	Rates              RatesConfig
 	DB                 DBConfig
 	Supabase           SupabaseConfig
 }
@@ -25,6 +26,14 @@ type TopCategoriesConfig struct {
 	MinRecords    int
 	ResponseCount int
 	CacheTTL      time.Duration
+}
+
+type RatesConfig struct {
+	NBRBBaseURL        string
+	HTTPTimeout        time.Duration
+	RateCacheTTL       time.Duration
+	CurrenciesCacheTTL time.Duration
+	FallbackDays       int
 }
 
 type DBConfig struct {
@@ -69,6 +78,13 @@ func Load(log logger.Logger) (Config, error) {
 			MinRecords:    getEnvInt("TOP_CATEGORIES_MIN_RECORDS", 10),
 			ResponseCount: getEnvInt("TOP_CATEGORIES_RESPONSE_COUNT", 5),
 			CacheTTL:      getEnvDuration("TOP_CATEGORIES_CACHE_TTL", time.Minute),
+		},
+		Rates: RatesConfig{
+			NBRBBaseURL:        getEnv("RATES_NBRB_BASE_URL", "https://api.nbrb.by"),
+			HTTPTimeout:        getEnvDuration("RATES_HTTP_TIMEOUT", 5*time.Second),
+			RateCacheTTL:       getEnvDuration("RATES_CACHE_TTL", 12*time.Hour),
+			CurrenciesCacheTTL: getEnvDuration("RATES_CURRENCIES_CACHE_TTL", 24*time.Hour),
+			FallbackDays:       getEnvInt("RATES_FALLBACK_DAYS", 7),
 		},
 		DB: DBConfig{
 			DSN:             getEnv("DB_DSN", ""),

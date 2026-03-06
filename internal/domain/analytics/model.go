@@ -3,10 +3,11 @@ package analytics
 import "time"
 
 type SummaryFilter struct {
-	From        time.Time
-	To          time.Time
-	Currency    string
-	CategoryIDs []string
+	From          time.Time
+	To            time.Time
+	Currency      string
+	UseBaseAmount bool
+	CategoryIDs   []string
 }
 
 type SummaryResult struct {
@@ -16,12 +17,13 @@ type SummaryResult struct {
 }
 
 type TimeseriesFilter struct {
-	From        time.Time
-	To          time.Time
-	GroupBy     string
-	Currency    string
-	CategoryIDs []string
-	Timezone    string
+	From          time.Time
+	To            time.Time
+	GroupBy       string
+	Currency      string
+	UseBaseAmount bool
+	CategoryIDs   []string
+	Timezone      string
 }
 
 type TimeseriesPoint struct {
@@ -31,11 +33,12 @@ type TimeseriesPoint struct {
 }
 
 type ByCategoryFilter struct {
-	From        time.Time
-	To          time.Time
-	Currency    string
-	CategoryIDs []string
-	Limit       int
+	From          time.Time
+	To            time.Time
+	Currency      string
+	UseBaseAmount bool
+	CategoryIDs   []string
+	Limit         int
 }
 
 type ByCategoryRow struct {
@@ -75,10 +78,11 @@ type TopCategoriesResult struct {
 }
 
 type MonthlyFilter struct {
-	From        time.Time
-	To          time.Time
-	Currency    string
-	CategoryIDs []string
+	From          time.Time
+	To            time.Time
+	Currency      string
+	UseBaseAmount bool
+	CategoryIDs   []string
 }
 
 type MonthlyRow struct {
@@ -88,12 +92,13 @@ type MonthlyRow struct {
 }
 
 type CompareFilter struct {
-	FromA       time.Time
-	ToA         time.Time
-	FromB       time.Time
-	ToB         time.Time
-	Currency    string
-	CategoryIDs []string
+	FromA         time.Time
+	ToA           time.Time
+	FromB         time.Time
+	ToB           time.Time
+	Currency      string
+	UseBaseAmount bool
+	CategoryIDs   []string
 }
 
 type PeriodSummary struct {

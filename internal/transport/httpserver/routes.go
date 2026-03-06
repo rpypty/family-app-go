@@ -48,6 +48,9 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.Pr
 			r.Get("/families/me/members", handlers.Common.ListFamilyMembers)
 			r.Delete("/families/me/members/{user_id}", handlers.Common.RemoveFamilyMember)
 
+			r.Get("/currencies", handlers.Expenses.ListCurrencies)
+			r.Get("/exchange-rates", handlers.Expenses.GetExchangeRate)
+
 			r.Get("/expenses", handlers.Expenses.ListExpenses)
 			r.Post("/expenses", handlers.Expenses.CreateExpense)
 			r.Put("/expenses/{id}", handlers.Expenses.UpdateExpense)

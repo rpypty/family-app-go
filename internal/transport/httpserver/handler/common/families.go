@@ -170,6 +170,10 @@ func (h *Handlers) UpdateFamily(w http.ResponseWriter, r *http.Request) {
 			h.log.BusinessError("families.update: invalid currency", err, "user_id", user.ID)
 			writeError(w, http.StatusBadRequest, "invalid_request", "default_currency must be a 3-letter code")
 			return
+		case errors.Is(err, familydomain.ErrDefaultCurrencyLocked):
+			h.log.BusinessError("families.update: default currency locked", err, "user_id", user.ID)
+			writeError(w, http.StatusConflict, "base_currency_locked", "default_currency cannot be changed")
+			return
 		case errors.Is(err, familydomain.ErrNoFieldsToUpdate):
 			h.log.BusinessError("families.update: no fields to update", err, "user_id", user.ID)
 			writeError(w, http.StatusBadRequest, "invalid_request", "at least one field is required")

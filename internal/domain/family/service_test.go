@@ -350,18 +350,30 @@ func TestUpdateFamily(t *testing.T) {
 	}
 }
 
-func TestUpdateFamilyCurrency(t *testing.T) {
+func TestUpdateFamilyCurrencyLocked(t *testing.T) {
 	repo := newFakeFamilyRepo()
 	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "user-1", DefaultCurrency: "USD"}
 	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleOwner}
 
 	svc := NewService(repo)
-	result, err := svc.UpdateFamily(context.Background(), "user-1", UpdateFamilyInput{DefaultCurrency: stringPtr("byn")})
+	_, err := svc.UpdateFamily(context.Background(), "user-1", UpdateFamilyInput{DefaultCurrency: stringPtr("byn")})
+	if !errors.Is(err, ErrDefaultCurrencyLocked) {
+		t.Fatalf("expected ErrDefaultCurrencyLocked, got %v", err)
+	}
+}
+
+func TestUpdateFamilySameCurrencyAllowed(t *testing.T) {
+	repo := newFakeFamilyRepo()
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "user-1", DefaultCurrency: "USD"}
+	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleOwner}
+
+	svc := NewService(repo)
+	result, err := svc.UpdateFamily(context.Background(), "user-1", UpdateFamilyInput{DefaultCurrency: stringPtr("usd")})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.DefaultCurrency != "BYN" {
-		t.Fatalf("expected updated default currency BYN, got %q", result.DefaultCurrency)
+	if result.DefaultCurrency != "USD" {
+		t.Fatalf("expected default currency unchanged, got %q", result.DefaultCurrency)
 	}
 }
 

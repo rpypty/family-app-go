@@ -237,6 +237,9 @@ func (s *Service) UpdateFamily(ctx context.Context, userID string, input UpdateF
 		}
 
 		if defaultCurrency != nil {
+			if family.DefaultCurrency != *defaultCurrency {
+				return ErrDefaultCurrencyLocked
+			}
 			if err := tx.UpdateFamilyDefaultCurrency(ctx, family.ID, *defaultCurrency); err != nil {
 				return err
 			}

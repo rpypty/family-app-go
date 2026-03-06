@@ -10,14 +10,17 @@ import (
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
 	gymdomain "family-app-go/internal/domain/gym"
+	ratesdomain "family-app-go/internal/domain/rates"
 	syncdomain "family-app-go/internal/domain/sync"
 	todosdomain "family-app-go/internal/domain/todos"
 	userdomain "family-app-go/internal/domain/user"
+	httpratesrepo "family-app-go/internal/repository/http/rates"
 	inmemoryrepo "family-app-go/internal/repository/inmemory"
 	analyticsrepo "family-app-go/internal/repository/postgres/analytics"
 	expensesrepo "family-app-go/internal/repository/postgres/expenses"
 	familyrepo "family-app-go/internal/repository/postgres/family"
 	gymrepo "family-app-go/internal/repository/postgres/gym"
+	postgresratesrepo "family-app-go/internal/repository/postgres/rates"
 	syncrepo "family-app-go/internal/repository/postgres/sync"
 	todosrepo "family-app-go/internal/repository/postgres/todos"
 	userrepo "family-app-go/internal/repository/postgres/user"
@@ -57,7 +60,17 @@ func New(log logger.Logger) (*App, error) {
 	familyService := familydomain.NewServiceWithCache(familyRepo, familyCache)
 	expensesRepo := expensesrepo.NewPostgres(dbConn)
 	categoriesCache := inmemoryrepo.NewInMemoryCategoriesCache()
-	expensesService := expensesdomain.NewServiceWithCategoriesCache(expensesRepo, categoriesCache)
+	nbrbProvider, err := httpratesrepo.NewNBRBClient(cfg.Rates.NBRBBaseURL, cfg.Rates.HTTPTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("initialize rates provider: %w", err)
+	}
+	ratesProvider := postgresratesrepo.NewPostgresProvider(dbConn, nbrbProvider)
+	ratesService := ratesdomain.NewService(ratesProvider, ratesdomain.Config{
+		RateCacheTTL:       cfg.Rates.RateCacheTTL,
+		CurrenciesCacheTTL: cfg.Rates.CurrenciesCacheTTL,
+		FallbackDays:       cfg.Rates.FallbackDays,
+	})
+	expensesService := expensesdomain.NewServiceWithDependencies(expensesRepo, categoriesCache, ratesService)
 	analyticsRepo := analyticsrepo.NewPostgres(dbConn)
 	analyticsService := analyticsdomain.NewServiceWithTopCategoriesConfig(analyticsRepo, analyticsdomain.TopCategoriesConfig{
 		Enabled:       cfg.TopCategories.Enabled,
@@ -75,7 +88,7 @@ func New(log logger.Logger) (*App, error) {
 	syncService := syncdomain.NewService(syncRepo, expensesService, todosService)
 	gymRepo := gymrepo.NewPostgres(dbConn)
 	gymService := gymdomain.NewService(gymRepo)
-	handlers := handler.New(analyticsService, familyService, expensesService, todosService, syncService, gymService, log)
+	handlers := handler.New(analyticsService, familyService, expensesService, ratesService, todosService, syncService, gymService, log)
 
 	log.Info("app: initializing router")
 	router := httpserver.NewRouter(cfg, handlers, userService, log)
