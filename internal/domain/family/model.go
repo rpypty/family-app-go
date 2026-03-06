@@ -8,12 +8,13 @@ const (
 )
 
 type Family struct {
-	ID        string    `gorm:"type:uuid;primaryKey"`
-	Name      string    `gorm:"not null"`
-	Code      string    `gorm:"size:6;not null;uniqueIndex"`
-	OwnerID   string    `gorm:"not null;index"`
-	CreatedAt time.Time `gorm:"autoCreateTime"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+	ID              string    `gorm:"type:uuid;primaryKey"`
+	Name            string    `gorm:"not null"`
+	Code            string    `gorm:"size:6;not null;uniqueIndex"`
+	OwnerID         string    `gorm:"not null;index"`
+	DefaultCurrency string    `gorm:"size:3;not null;default:USD"`
+	CreatedAt       time.Time `gorm:"autoCreateTime"`
+	UpdatedAt       time.Time `gorm:"autoUpdateTime"`
 }
 
 type FamilyMember struct {

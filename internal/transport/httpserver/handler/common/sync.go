@@ -111,6 +111,7 @@ func (h *Handlers) SyncBatch(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.Sync.ProcessBatch(r.Context(), syncdomain.BatchInput{
 		FamilyID:       family.ID,
+		BaseCurrency:   family.DefaultCurrency,
 		User:           syncdomain.UserSnapshot{ID: user.ID, Name: user.Name, Email: user.Email, AvatarURL: user.AvatarURL},
 		IdempotencyKey: idempotencyKey,
 		Operations:     operations,

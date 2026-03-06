@@ -77,6 +77,7 @@ type UserSnapshot struct {
 
 type BatchInput struct {
 	FamilyID       string
+	BaseCurrency   string
 	User           UserSnapshot
 	IdempotencyKey string
 	Operations     []OperationInput

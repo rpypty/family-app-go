@@ -184,17 +184,22 @@ func (s *Service) processOperation(ctx context.Context, input BatchInput, operat
 		}
 
 		createdExpense, err := s.expenses.CreateExpense(ctx, expensesdomain.CreateExpenseInput{
-			FamilyID:    input.FamilyID,
-			UserID:      input.User.ID,
-			Date:        operation.CreateExpense.Date,
-			Amount:      operation.CreateExpense.Amount,
-			Currency:    operation.CreateExpense.Currency,
-			Title:       operation.CreateExpense.Title,
-			CategoryIDs: operation.CreateExpense.CategoryIDs,
+			FamilyID:     input.FamilyID,
+			UserID:       input.User.ID,
+			Date:         operation.CreateExpense.Date,
+			Amount:       operation.CreateExpense.Amount,
+			Currency:     operation.CreateExpense.Currency,
+			BaseCurrency: input.BaseCurrency,
+			Title:        operation.CreateExpense.Title,
+			CategoryIDs:  operation.CreateExpense.CategoryIDs,
 		})
 		if err != nil {
 			if errors.Is(err, expensesdomain.ErrCategoryNotFound) {
 				result = failResult(result, ErrorCodeCategoryNotFound, "category not found", false)
+				break
+			}
+			if errors.Is(err, expensesdomain.ErrRateNotAvailable) {
+				result = failResult(result, ErrorCodeInvalidRequest, "rate is not available for selected date", false)
 				break
 			}
 			result = failResult(result, ErrorCodeInternalError, "internal error", true)

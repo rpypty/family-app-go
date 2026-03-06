@@ -98,20 +98,22 @@ func (s *Service) Monthly(ctx context.Context, familyID string, filter MonthlyFi
 
 func (s *Service) Compare(ctx context.Context, familyID string, filter CompareFilter) (CompareResult, error) {
 	resultA, err := s.repo.Summary(ctx, familyID, SummaryFilter{
-		From:        filter.FromA,
-		To:          filter.ToA,
-		Currency:    filter.Currency,
-		CategoryIDs: filter.CategoryIDs,
+		From:          filter.FromA,
+		To:            filter.ToA,
+		Currency:      filter.Currency,
+		UseBaseAmount: filter.UseBaseAmount,
+		CategoryIDs:   filter.CategoryIDs,
 	})
 	if err != nil {
 		return CompareResult{}, err
 	}
 
 	resultB, err := s.repo.Summary(ctx, familyID, SummaryFilter{
-		From:        filter.FromB,
-		To:          filter.ToB,
-		Currency:    filter.Currency,
-		CategoryIDs: filter.CategoryIDs,
+		From:          filter.FromB,
+		To:            filter.ToB,
+		Currency:      filter.Currency,
+		UseBaseAmount: filter.UseBaseAmount,
+		CategoryIDs:   filter.CategoryIDs,
 	})
 	if err != nil {
 		return CompareResult{}, err

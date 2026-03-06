@@ -216,6 +216,51 @@ func TestProcessBatchParallelSameOperationID(t *testing.T) {
 	}
 }
 
+func TestProcessBatchCreateExpenseRateNotAvailable(t *testing.T) {
+	repo := newFakeSyncRepo()
+	expensesSvc := newFakeExpensesService()
+	expensesSvc.createErr = expensesdomain.ErrRateNotAvailable
+	todosSvc := newFakeTodosService()
+	svc := NewService(repo, expensesSvc, todosSvc)
+
+	input := BatchInput{
+		FamilyID:     "fam-1",
+		BaseCurrency: "USD",
+		User:         UserSnapshot{ID: "user-1", Name: "Test", Email: "test@example.com"},
+		Operations: []OperationInput{
+			{
+				OperationID: "77777777-7777-4777-8777-777777777777",
+				Type:        OperationTypeCreateExpense,
+				LocalID:     "expense-local-1",
+				CreateExpense: &CreateExpensePayload{
+					Date:     time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+					Amount:   10,
+					Currency: "BYN",
+					Title:    "Coffee",
+				},
+			},
+		},
+	}
+
+	response, err := svc.ProcessBatch(context.Background(), input)
+	if err != nil {
+		t.Fatalf("process failed: %v", err)
+	}
+	if response.Status != BatchStatusFailed {
+		t.Fatalf("expected failed batch, got %s", response.Status)
+	}
+	if len(response.Results) != 1 {
+		t.Fatalf("expected one result, got %d", len(response.Results))
+	}
+	result := response.Results[0]
+	if result.Status != ResultStatusFailed {
+		t.Fatalf("expected failed result, got %s", result.Status)
+	}
+	if result.Error == nil || result.Error.Code != ErrorCodeInvalidRequest {
+		t.Fatalf("expected invalid_request error, got %+v", result.Error)
+	}
+}
+
 type fakeSyncRepo struct {
 	mu stdsync.Mutex
 
@@ -337,6 +382,7 @@ type fakeExpensesService struct {
 	mu          stdsync.Mutex
 	createCalls int
 	seq         int
+	createErr   error
 }
 
 func newFakeExpensesService() *fakeExpensesService {
@@ -348,6 +394,9 @@ func (f *fakeExpensesService) CreateExpense(_ context.Context, _ expensesdomain.
 	defer f.mu.Unlock()
 
 	f.createCalls++
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
 	f.seq++
 	id := fmt.Sprintf("expense-%d", f.seq)
 	return &expensesdomain.ExpenseWithCategories{

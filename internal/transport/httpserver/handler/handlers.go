@@ -5,6 +5,7 @@ import (
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
 	gymdomain "family-app-go/internal/domain/gym"
+	ratesdomain "family-app-go/internal/domain/rates"
 	syncdomain "family-app-go/internal/domain/sync"
 	todosdomain "family-app-go/internal/domain/todos"
 	commonhandler "family-app-go/internal/transport/httpserver/handler/common"
@@ -21,10 +22,10 @@ type Handlers struct {
 	Gym      *gymhandler.Handlers
 }
 
-func New(analytics *analyticsdomain.Service, families *familydomain.Service, expenses *expensesdomain.Service, todos *todosdomain.Service, sync *syncdomain.Service, gym *gymdomain.Service, log logger.Logger) *Handlers {
+func New(analytics *analyticsdomain.Service, families *familydomain.Service, expenses *expensesdomain.Service, rates *ratesdomain.Service, todos *todosdomain.Service, sync *syncdomain.Service, gym *gymdomain.Service, log logger.Logger) *Handlers {
 	return &Handlers{
 		Common:   commonhandler.New(families, sync, log),
-		Expenses: expenseshandler.New(analytics, families, expenses, log),
+		Expenses: expenseshandler.New(analytics, families, expenses, rates, log),
 		Todos:    todoshandler.New(families, todos, log),
 		Gym:      gymhandler.New(gym, log),
 	}

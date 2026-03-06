@@ -3,30 +3,44 @@ package expenses
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
+
+	ratesdomain "family-app-go/internal/domain/rates"
 )
 
 type Service struct {
 	repo            Repository
 	categoriesCache CategoriesCache
+	rates           RateProvider
+}
+
+type RateProvider interface {
+	GetRate(ctx context.Context, from, to string, onDate time.Time) (ratesdomain.Quote, error)
 }
 
 func NewService(repo Repository) *Service {
-	return NewServiceWithCategoriesCache(repo, nil)
+	return NewServiceWithDependencies(repo, nil, nil)
 }
 
 const categoriesCacheTTL = 60 * time.Second
 
 func NewServiceWithCategoriesCache(repo Repository, categoriesCache CategoriesCache) *Service {
+	return NewServiceWithDependencies(repo, categoriesCache, nil)
+}
+
+func NewServiceWithDependencies(repo Repository, categoriesCache CategoriesCache, rates RateProvider) *Service {
 	if categoriesCache == nil {
 		categoriesCache = noopCategoriesCache{}
 	}
 	return &Service{
 		repo:            repo,
 		categoriesCache: categoriesCache,
+		rates:           rates,
 	}
 }
 
@@ -62,7 +76,8 @@ func (s *Service) ListExpenses(ctx context.Context, familyID string, filter List
 }
 
 func (s *Service) CreateExpense(ctx context.Context, input CreateExpenseInput) (*ExpenseWithCategories, error) {
-	if err := s.validateInput(input.Currency, input.Title); err != nil {
+	currency, baseCurrency, err := s.validateInput(input.Currency, input.BaseCurrency, input.Title)
+	if err != nil {
 		return nil, err
 	}
 
@@ -77,8 +92,11 @@ func (s *Service) CreateExpense(ctx context.Context, input CreateExpenseInput) (
 		UserID:   input.UserID,
 		Date:     input.Date,
 		Amount:   input.Amount,
-		Currency: strings.ToUpper(input.Currency),
+		Currency: currency,
 		Title:    strings.TrimSpace(input.Title),
+	}
+	if err := s.applyCurrencyConversion(ctx, &expense, baseCurrency); err != nil {
+		return nil, err
 	}
 
 	categoryIDs := normalizeCategoryIDs(input.CategoryIDs)
@@ -111,7 +129,8 @@ func (s *Service) CreateExpense(ctx context.Context, input CreateExpenseInput) (
 }
 
 func (s *Service) UpdateExpense(ctx context.Context, input UpdateExpenseInput) (*ExpenseWithCategories, error) {
-	if err := s.validateInput(input.Currency, input.Title); err != nil {
+	currency, baseCurrency, err := s.validateInput(input.Currency, input.BaseCurrency, input.Title)
+	if err != nil {
 		return nil, err
 	}
 
@@ -121,7 +140,7 @@ func (s *Service) UpdateExpense(ctx context.Context, input UpdateExpenseInput) (
 	}
 
 	var updated Expense
-	err := s.repo.Transaction(ctx, func(tx Repository) error {
+	err = s.repo.Transaction(ctx, func(tx Repository) error {
 		if len(categoryIDs) > 0 {
 			count, err := tx.CountCategoriesByIDs(ctx, input.FamilyID, categoryIDs)
 			if err != nil {
@@ -139,9 +158,12 @@ func (s *Service) UpdateExpense(ctx context.Context, input UpdateExpenseInput) (
 
 		expense.Date = input.Date
 		expense.Amount = input.Amount
-		expense.Currency = strings.ToUpper(input.Currency)
+		expense.Currency = currency
 		expense.Title = strings.TrimSpace(input.Title)
 		expense.UpdatedAt = time.Now().UTC()
+		if err := s.applyCurrencyConversion(ctx, expense, baseCurrency); err != nil {
+			return err
+		}
 
 		if err := tx.UpdateExpense(ctx, expense); err != nil {
 			return err
@@ -285,14 +307,94 @@ func (s *Service) DeleteCategory(ctx context.Context, familyID, categoryID strin
 	return nil
 }
 
-func (s *Service) validateInput(currency, title string) error {
+func (s *Service) validateInput(currency, baseCurrency, title string) (string, string, error) {
 	if strings.TrimSpace(title) == "" {
-		return fmt.Errorf("title is required")
+		return "", "", fmt.Errorf("title is required")
 	}
-	if strings.TrimSpace(currency) == "" {
-		return fmt.Errorf("currency is required")
+	normalizedCurrency, err := normalizeCurrencyCode(currency)
+	if err != nil {
+		return "", "", fmt.Errorf("currency is required")
 	}
+	normalizedBaseCurrency := normalizedCurrency
+	if strings.TrimSpace(baseCurrency) != "" {
+		normalizedBaseCurrency, err = normalizeCurrencyCode(baseCurrency)
+		if err != nil {
+			return "", "", fmt.Errorf("base currency is invalid")
+		}
+	}
+
+	return normalizedCurrency, normalizedBaseCurrency, nil
+}
+
+func (s *Service) applyCurrencyConversion(ctx context.Context, expense *Expense, baseCurrency string) error {
+	expense.BaseCurrency = stringPtr(baseCurrency)
+	expense.RateDate = timePtr(dateOnlyUTC(expense.Date))
+
+	if expense.Currency == baseCurrency {
+		expense.ExchangeRate = float64Ptr(1)
+		expense.AmountInBase = float64Ptr(roundMoney(expense.Amount))
+		expense.RateSource = stringPtr("identity")
+		return nil
+	}
+
+	if s.rates == nil {
+		return ErrRateNotAvailable
+	}
+
+	quote, err := s.rates.GetRate(ctx, expense.Currency, baseCurrency, expense.Date)
+	if err != nil {
+		if errors.Is(err, ratesdomain.ErrRateNotAvailable) {
+			return ErrRateNotAvailable
+		}
+		return err
+	}
+
+	expense.ExchangeRate = float64Ptr(quote.Rate)
+	expense.AmountInBase = float64Ptr(roundMoney(expense.Amount * quote.Rate))
+	expense.RateDate = timePtr(dateOnlyUTC(quote.Date))
+	source := strings.TrimSpace(quote.Source)
+	if source == "" {
+		source = "unknown"
+	}
+	expense.RateSource = stringPtr(source)
+
 	return nil
+}
+
+func normalizeCurrencyCode(currency string) (string, error) {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if len(currency) != 3 {
+		return "", fmt.Errorf("currency must be 3 letters")
+	}
+	for i := 0; i < len(currency); i++ {
+		if currency[i] < 'A' || currency[i] > 'Z' {
+			return "", fmt.Errorf("currency must be 3 letters")
+		}
+	}
+	return currency, nil
+}
+
+func stringPtr(value string) *string {
+	result := value
+	return &result
+}
+
+func float64Ptr(value float64) *float64 {
+	result := value
+	return &result
+}
+
+func timePtr(value time.Time) *time.Time {
+	result := value
+	return &result
+}
+
+func dateOnlyUTC(value time.Time) time.Time {
+	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func roundMoney(value float64) float64 {
+	return math.Round(value*100) / 100
 }
 
 func normalizeCategoryIDs(categoryIDs []string) []string {

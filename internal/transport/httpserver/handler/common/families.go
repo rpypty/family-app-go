@@ -20,7 +20,8 @@ type joinFamilyRequest struct {
 }
 
 type updateFamilyRequest struct {
-	Name string `json:"name"`
+	Name            *string `json:"name"`
+	DefaultCurrency *string `json:"default_currency"`
 }
 
 func (h *Handlers) GetFamilyMe(w http.ResponseWriter, r *http.Request) {
@@ -144,11 +145,6 @@ func (h *Handlers) UpdateFamily(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_json", "invalid json body")
 		return
 	}
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "name is required")
-		return
-	}
 
 	user, ok := middleware.UserFromContext(r.Context())
 	if !ok {
@@ -156,11 +152,31 @@ func (h *Handlers) UpdateFamily(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.Families.UpdateFamily(r.Context(), user.ID, req.Name)
+	result, err := h.Families.UpdateFamily(r.Context(), user.ID, familydomain.UpdateFamilyInput{
+		Name:            req.Name,
+		DefaultCurrency: req.DefaultCurrency,
+	})
 	if err != nil {
-		if errors.Is(err, familydomain.ErrFamilyNotFound) {
+		switch {
+		case errors.Is(err, familydomain.ErrFamilyNotFound):
 			h.log.BusinessError("families.update: family not found", err, "user_id", user.ID)
 			writeError(w, http.StatusNotFound, "family_not_found", "family not found")
+			return
+		case errors.Is(err, familydomain.ErrInvalidFamilyName):
+			h.log.BusinessError("families.update: invalid name", err, "user_id", user.ID)
+			writeError(w, http.StatusBadRequest, "invalid_request", "name is required")
+			return
+		case errors.Is(err, familydomain.ErrInvalidCurrency):
+			h.log.BusinessError("families.update: invalid currency", err, "user_id", user.ID)
+			writeError(w, http.StatusBadRequest, "invalid_request", "default_currency must be a 3-letter code")
+			return
+		case errors.Is(err, familydomain.ErrDefaultCurrencyLocked):
+			h.log.BusinessError("families.update: default currency locked", err, "user_id", user.ID)
+			writeError(w, http.StatusConflict, "base_currency_locked", "default_currency cannot be changed")
+			return
+		case errors.Is(err, familydomain.ErrNoFieldsToUpdate):
+			h.log.BusinessError("families.update: no fields to update", err, "user_id", user.ID)
+			writeError(w, http.StatusBadRequest, "invalid_request", "at least one field is required")
 			return
 		}
 		h.log.InternalError("families.update: update family failed", err, "user_id", user.ID)
@@ -246,11 +262,12 @@ func notImplemented(w http.ResponseWriter) {
 }
 
 type familyResponse struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Code      string    `json:"code"`
-	OwnerID   string    `json:"owner_id"`
-	CreatedAt time.Time `json:"created_at"`
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Code            string    `json:"code"`
+	OwnerID         string    `json:"owner_id"`
+	DefaultCurrency string    `json:"default_currency"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type familyMemberResponse struct {
@@ -263,10 +280,11 @@ type familyMemberResponse struct {
 
 func toFamilyResponse(familyModel *familydomain.Family) familyResponse {
 	return familyResponse{
-		ID:        familyModel.ID,
-		Name:      familyModel.Name,
-		Code:      familyModel.Code,
-		OwnerID:   familyModel.OwnerID,
-		CreatedAt: familyModel.CreatedAt,
+		ID:              familyModel.ID,
+		Name:            familyModel.Name,
+		Code:            familyModel.Code,
+		OwnerID:         familyModel.OwnerID,
+		DefaultCurrency: familyModel.DefaultCurrency,
+		CreatedAt:       familyModel.CreatedAt,
 	}
 }

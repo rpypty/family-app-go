@@ -297,10 +297,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Family'
+        '409':
+          $ref: '#/components/responses/BaseCurrencyLocked'
         '404':
           $ref: '#/components/responses/FamilyNotFound'
     patch:
-      summary: Update family name
+      summary: Update family settings
       security:
         - bearerAuth: []
       requestBody:
@@ -402,6 +404,55 @@ paths:
           $ref: '#/components/responses/MemberNotFound'
         '409':
           $ref: '#/components/responses/CannotRemoveOwner'
+  /currencies:
+    get:
+      summary: List supported currencies
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Currency'
+  /exchange-rates:
+    get:
+      summary: Get exchange rate for currency pair on date
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 3
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 3
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExchangeRate'
+        '404':
+          $ref: '#/components/responses/RateNotAvailable'
   /expenses:
     get:
       summary: List expenses
@@ -418,6 +469,12 @@ paths:
           schema:
             type: string
             format: date
+        - in: query
+          name: currency
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 3
         - in: query
           name: category_id
           schema:
@@ -462,6 +519,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Expense'
+        '422':
+          $ref: '#/components/responses/RateNotAvailable'
   /expenses/{id}:
     put:
       summary: Update expense
@@ -486,6 +545,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Expense'
+        '422':
+          $ref: '#/components/responses/RateNotAvailable'
     delete:
       summary: Delete expense
       security:
@@ -1157,6 +1218,26 @@ components:
             error:
               code: cannot_remove_owner
               message: Cannot remove owner
+    BaseCurrencyLocked:
+      description: Base currency is locked
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: base_currency_locked
+              message: default_currency cannot be changed
+    RateNotAvailable:
+      description: Rate is not available for selected date
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: rate_not_available
+              message: rate is not available for selected date
     TodoListNotFound:
       description: Todo list not found
       content:
@@ -1454,7 +1535,7 @@ components:
           nullable: true
     Family:
       type: object
-      required: [id, name, code, owner_id, created_at]
+      required: [id, name, code, owner_id, default_currency, created_at]
       properties:
         id:
           type: string
@@ -1464,6 +1545,11 @@ components:
           type: string
         owner_id:
           type: string
+        default_currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: '^[A-Z]{3}$'
         created_at:
           type: string
           format: date-time
@@ -1502,6 +1588,22 @@ components:
           type: number
         currency:
           type: string
+        base_currency:
+          type: string
+          nullable: true
+        exchange_rate:
+          type: number
+          nullable: true
+        amount_in_base:
+          type: number
+          nullable: true
+        rate_date:
+          type: string
+          format: date
+          nullable: true
+        rate_source:
+          type: string
+          nullable: true
         title:
           type: string
         category_ids:
@@ -1761,6 +1863,37 @@ components:
           type: array
           items:
             type: string
+    Currency:
+      type: object
+      required: [code, name, icon]
+      properties:
+        code:
+          type: string
+          minLength: 3
+          maxLength: 3
+        name:
+          type: string
+        icon:
+          type: string
+    ExchangeRate:
+      type: object
+      required: [from, to, date, rate, source]
+      properties:
+        from:
+          type: string
+          minLength: 3
+          maxLength: 3
+        to:
+          type: string
+          minLength: 3
+          maxLength: 3
+        date:
+          type: string
+          format: date
+        rate:
+          type: number
+        source:
+          type: string
     AnalyticsSummary:
       type: object
       required: [total_amount, currency, count, avg_per_day, from, to]
@@ -1868,10 +2001,17 @@ components:
           type: string
     UpdateFamilyRequest:
       type: object
-      required: [name]
+      anyOf:
+        - required: [name]
+        - required: [default_currency]
       properties:
         name:
           type: string
+        default_currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: '^[A-Za-z]{3}$'
     CreateExpenseRequest:
       type: object
       required: [date, amount, currency, title]

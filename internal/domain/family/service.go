@@ -10,14 +10,20 @@ import (
 )
 
 const (
-	familyCodeLength   = 6
-	familyCodeAttempts = 10
-	familyCacheTTL     = 60 * time.Second
+	familyCodeLength      = 6
+	familyCodeAttempts    = 10
+	familyCacheTTL        = 60 * time.Second
+	defaultFamilyCurrency = "USD"
 )
 
 type Service struct {
 	repo  Repository
 	cache Cache
+}
+
+type UpdateFamilyInput struct {
+	Name            *string
+	DefaultCurrency *string
 }
 
 func NewService(repo Repository) *Service {
@@ -48,13 +54,13 @@ func (s *Service) GetFamilyByUser(ctx context.Context, userID string) (*Family, 
 }
 
 func (s *Service) CreateFamily(ctx context.Context, userID, name string) (*Family, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, fmt.Errorf("name is required")
+	normalizedName, err := normalizeFamilyName(name)
+	if err != nil {
+		return nil, err
 	}
 
 	var result Family
-	err := s.repo.Transaction(ctx, func(tx Repository) error {
+	err = s.repo.Transaction(ctx, func(tx Repository) error {
 		inFamily, err := tx.IsUserInFamily(ctx, userID)
 		if err != nil {
 			return err
@@ -74,10 +80,11 @@ func (s *Service) CreateFamily(ctx context.Context, userID, name string) (*Famil
 		}
 
 		family := Family{
-			ID:      id,
-			Name:    name,
-			Code:    code,
-			OwnerID: userID,
+			ID:              id,
+			Name:            normalizedName,
+			Code:            code,
+			OwnerID:         userID,
+			DefaultCurrency: defaultFamilyCurrency,
 		}
 		if err := tx.CreateFamily(ctx, &family); err != nil {
 			return err
@@ -191,24 +198,62 @@ func (s *Service) LeaveFamily(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (s *Service) UpdateFamily(ctx context.Context, userID, name string) (*Family, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, fmt.Errorf("name is required")
+func (s *Service) UpdateFamily(ctx context.Context, userID string, input UpdateFamilyInput) (*Family, error) {
+	if input.Name == nil && input.DefaultCurrency == nil {
+		return nil, ErrNoFieldsToUpdate
 	}
 
-	family, err := s.repo.GetFamilyByUser(ctx, userID)
+	var (
+		name            *string
+		defaultCurrency *string
+	)
+	if input.Name != nil {
+		normalizedName, err := normalizeFamilyName(*input.Name)
+		if err != nil {
+			return nil, err
+		}
+		name = &normalizedName
+	}
+	if input.DefaultCurrency != nil {
+		normalizedCurrency, err := normalizeCurrency(*input.DefaultCurrency)
+		if err != nil {
+			return nil, err
+		}
+		defaultCurrency = &normalizedCurrency
+	}
+
+	var result Family
+	err := s.repo.Transaction(ctx, func(tx Repository) error {
+		family, err := tx.GetFamilyByUser(ctx, userID)
+		if err != nil {
+			return err
+		}
+
+		if name != nil {
+			if err := tx.UpdateFamilyName(ctx, family.ID, *name); err != nil {
+				return err
+			}
+			family.Name = *name
+		}
+
+		if defaultCurrency != nil {
+			if family.DefaultCurrency != *defaultCurrency {
+				return ErrDefaultCurrencyLocked
+			}
+			if err := tx.UpdateFamilyDefaultCurrency(ctx, family.ID, *defaultCurrency); err != nil {
+				return err
+			}
+			family.DefaultCurrency = *defaultCurrency
+		}
+
+		result = *family
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	if err := s.repo.UpdateFamilyName(ctx, family.ID, name); err != nil {
-		return nil, err
-	}
-
-	family.Name = name
 	s.cache.Clear()
-	return cloneFamily(family), nil
+	return cloneFamily(&result), nil
 }
 
 func (s *Service) ListMembers(ctx context.Context, userID string) ([]FamilyMember, error) {
@@ -313,4 +358,25 @@ func newUUID() (string, error) {
 	b[8] = (b[8] & 0x3f) | 0x80
 
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
+}
+
+func normalizeFamilyName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", ErrInvalidFamilyName
+	}
+	return name, nil
+}
+
+func normalizeCurrency(currency string) (string, error) {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if len(currency) != 3 {
+		return "", ErrInvalidCurrency
+	}
+	for i := 0; i < len(currency); i++ {
+		if currency[i] < 'A' || currency[i] > 'Z' {
+			return "", ErrInvalidCurrency
+		}
+	}
+	return currency, nil
 }

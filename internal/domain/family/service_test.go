@@ -147,6 +147,15 @@ func (r *fakeFamilyRepo) UpdateFamilyName(ctx context.Context, familyID, name st
 	return nil
 }
 
+func (r *fakeFamilyRepo) UpdateFamilyDefaultCurrency(ctx context.Context, familyID, currency string) error {
+	family, ok := r.families[familyID]
+	if !ok {
+		return ErrFamilyNotFound
+	}
+	family.DefaultCurrency = currency
+	return nil
+}
+
 func (r *fakeFamilyRepo) UpdateFamilyOwner(ctx context.Context, familyID, ownerID string) error {
 	family, ok := r.families[familyID]
 	if !ok {
@@ -227,6 +236,9 @@ func TestCreateFamilySuccess(t *testing.T) {
 	}
 	if len(result.Code) != 6 {
 		t.Fatalf("expected code length 6, got %q", result.Code)
+	}
+	if result.DefaultCurrency != "USD" {
+		t.Fatalf("expected default currency USD, got %q", result.DefaultCurrency)
 	}
 	member, ok := repo.members["user-1"]
 	if !ok {
@@ -325,16 +337,55 @@ func TestLeaveFamilyOwnerSolo(t *testing.T) {
 
 func TestUpdateFamily(t *testing.T) {
 	repo := newFakeFamilyRepo()
-	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "user-1"}
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "user-1", DefaultCurrency: "USD"}
 	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleOwner}
 
 	svc := NewService(repo)
-	result, err := svc.UpdateFamily(context.Background(), "user-1", "New Name")
+	result, err := svc.UpdateFamily(context.Background(), "user-1", UpdateFamilyInput{Name: stringPtr("New Name")})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if result.Name != "New Name" {
 		t.Fatalf("expected updated name, got %q", result.Name)
+	}
+}
+
+func TestUpdateFamilyCurrencyLocked(t *testing.T) {
+	repo := newFakeFamilyRepo()
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "user-1", DefaultCurrency: "USD"}
+	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleOwner}
+
+	svc := NewService(repo)
+	_, err := svc.UpdateFamily(context.Background(), "user-1", UpdateFamilyInput{DefaultCurrency: stringPtr("byn")})
+	if !errors.Is(err, ErrDefaultCurrencyLocked) {
+		t.Fatalf("expected ErrDefaultCurrencyLocked, got %v", err)
+	}
+}
+
+func TestUpdateFamilySameCurrencyAllowed(t *testing.T) {
+	repo := newFakeFamilyRepo()
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "user-1", DefaultCurrency: "USD"}
+	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleOwner}
+
+	svc := NewService(repo)
+	result, err := svc.UpdateFamily(context.Background(), "user-1", UpdateFamilyInput{DefaultCurrency: stringPtr("usd")})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.DefaultCurrency != "USD" {
+		t.Fatalf("expected default currency unchanged, got %q", result.DefaultCurrency)
+	}
+}
+
+func TestUpdateFamilyRejectsInvalidCurrency(t *testing.T) {
+	repo := newFakeFamilyRepo()
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Fam", Code: "ZXCVBN", OwnerID: "user-1", DefaultCurrency: "USD"}
+	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleOwner}
+
+	svc := NewService(repo)
+	_, err := svc.UpdateFamily(context.Background(), "user-1", UpdateFamilyInput{DefaultCurrency: stringPtr("USDT")})
+	if !errors.Is(err, ErrInvalidCurrency) {
+		t.Fatalf("expected ErrInvalidCurrency, got %v", err)
 	}
 }
 
@@ -422,7 +473,7 @@ func TestGetFamilyByUserUsesCache(t *testing.T) {
 
 func TestUpdateFamilyInvalidatesCache(t *testing.T) {
 	repo := newFakeFamilyRepo()
-	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Old", Code: "ZXCVBN", OwnerID: "user-1"}
+	repo.families["fam-1"] = &Family{ID: "fam-1", Name: "Old", Code: "ZXCVBN", OwnerID: "user-1", DefaultCurrency: "USD"}
 	repo.members["user-1"] = &FamilyMember{FamilyID: "fam-1", UserID: "user-1", Role: RoleOwner}
 
 	svc := NewServiceWithCache(repo, newFakeFamilyCache())
@@ -434,7 +485,7 @@ func TestUpdateFamilyInvalidatesCache(t *testing.T) {
 		t.Fatalf("expected 1 call after warmup, got %d", repo.getFamilyByUserCalls)
 	}
 
-	if _, err := svc.UpdateFamily(context.Background(), "user-1", "New"); err != nil {
+	if _, err := svc.UpdateFamily(context.Background(), "user-1", UpdateFamilyInput{Name: stringPtr("New")}); err != nil {
 		t.Fatalf("update family: %v", err)
 	}
 
@@ -448,4 +499,8 @@ func TestUpdateFamilyInvalidatesCache(t *testing.T) {
 	if repo.getFamilyByUserCalls != 3 {
 		t.Fatalf("expected cache invalidation and 3 total repo calls, got %d", repo.getFamilyByUserCalls)
 	}
+}
+
+func stringPtr(value string) *string {
+	return &value
 }

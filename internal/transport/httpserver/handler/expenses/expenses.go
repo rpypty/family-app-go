@@ -76,6 +76,10 @@ func (h *Handlers) ListExpenses(w http.ResponseWriter, r *http.Request) {
 		Limit:  limit,
 		Offset: offset,
 	}
+	currency := strings.ToUpper(strings.TrimSpace(query.Get("currency")))
+	if currency != "" {
+		filter.Currency = currency
+	}
 	categoryIDs := parseCSV(query.Get("category_ids"))
 	if len(categoryIDs) > 0 {
 		filter.CategoryIDs = categoryIDs
@@ -148,13 +152,14 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := expensesdomain.CreateExpenseInput{
-		FamilyID:    family.ID,
-		UserID:      user.ID,
-		Date:        date,
-		Amount:      req.Amount,
-		Currency:    req.Currency,
-		Title:       req.Title,
-		CategoryIDs: req.CategoryIDs,
+		FamilyID:     family.ID,
+		UserID:       user.ID,
+		Date:         date,
+		Amount:       req.Amount,
+		Currency:     req.Currency,
+		BaseCurrency: family.DefaultCurrency,
+		Title:        req.Title,
+		CategoryIDs:  req.CategoryIDs,
 	}
 
 	created, err := h.Expenses.CreateExpense(r.Context(), input)
@@ -162,6 +167,11 @@ func (h *Handlers) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, expensesdomain.ErrCategoryNotFound) {
 			h.log.BusinessError("expenses.create: category not found", err, "user_id", user.ID, "family_id", family.ID)
 			writeError(w, http.StatusNotFound, "category_not_found", "category not found")
+			return
+		}
+		if errors.Is(err, expensesdomain.ErrRateNotAvailable) {
+			h.log.BusinessError("expenses.create: rate not available", err, "user_id", user.ID, "family_id", family.ID)
+			writeError(w, http.StatusUnprocessableEntity, "rate_not_available", "rate is not available for selected date")
 			return
 		}
 		h.log.InternalError("expenses.create: create expense failed", err, "user_id", user.ID, "family_id", family.ID)
@@ -222,13 +232,14 @@ func (h *Handlers) UpdateExpense(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := expensesdomain.UpdateExpenseInput{
-		ID:          expenseID,
-		FamilyID:    family.ID,
-		Date:        date,
-		Amount:      req.Amount,
-		Currency:    req.Currency,
-		Title:       req.Title,
-		CategoryIDs: req.CategoryIDs,
+		ID:           expenseID,
+		FamilyID:     family.ID,
+		Date:         date,
+		Amount:       req.Amount,
+		Currency:     req.Currency,
+		BaseCurrency: family.DefaultCurrency,
+		Title:        req.Title,
+		CategoryIDs:  req.CategoryIDs,
 	}
 
 	updated, err := h.Expenses.UpdateExpense(r.Context(), input)
@@ -240,6 +251,9 @@ func (h *Handlers) UpdateExpense(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, expensesdomain.ErrCategoryNotFound):
 			h.log.BusinessError("expenses.update: category not found", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
 			writeError(w, http.StatusNotFound, "category_not_found", "category not found")
+		case errors.Is(err, expensesdomain.ErrRateNotAvailable):
+			h.log.BusinessError("expenses.update: rate not available", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
+			writeError(w, http.StatusUnprocessableEntity, "rate_not_available", "rate is not available for selected date")
 		default:
 			h.log.InternalError("expenses.update: update expense failed", err, "user_id", user.ID, "family_id", family.ID, "expense_id", expenseID)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -290,16 +304,21 @@ func (h *Handlers) DeleteExpense(w http.ResponseWriter, r *http.Request) {
 }
 
 type expenseResponse struct {
-	ID          string    `json:"id"`
-	FamilyID    string    `json:"family_id"`
-	UserID      string    `json:"user_id"`
-	Date        string    `json:"date"`
-	Amount      float64   `json:"amount"`
-	Currency    string    `json:"currency"`
-	Title       string    `json:"title"`
-	CategoryIDs []string  `json:"category_ids"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	FamilyID     string    `json:"family_id"`
+	UserID       string    `json:"user_id"`
+	Date         string    `json:"date"`
+	Amount       float64   `json:"amount"`
+	Currency     string    `json:"currency"`
+	BaseCurrency *string   `json:"base_currency,omitempty"`
+	ExchangeRate *float64  `json:"exchange_rate,omitempty"`
+	AmountInBase *float64  `json:"amount_in_base,omitempty"`
+	RateDate     *string   `json:"rate_date,omitempty"`
+	RateSource   *string   `json:"rate_source,omitempty"`
+	Title        string    `json:"title"`
+	CategoryIDs  []string  `json:"category_ids"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type expenseListResponse struct {
@@ -308,16 +327,27 @@ type expenseListResponse struct {
 }
 
 func toExpenseResponse(expense expensesdomain.ExpenseWithCategories) expenseResponse {
+	var rateDate *string
+	if expense.RateDate != nil {
+		value := expense.RateDate.Format("2006-01-02")
+		rateDate = &value
+	}
+
 	return expenseResponse{
-		ID:          expense.ID,
-		FamilyID:    expense.FamilyID,
-		UserID:      expense.UserID,
-		Date:        expense.Date.Format("2006-01-02"),
-		Amount:      expense.Amount,
-		Currency:    expense.Currency,
-		Title:       expense.Title,
-		CategoryIDs: expense.CategoryIDs,
-		CreatedAt:   expense.CreatedAt,
-		UpdatedAt:   expense.UpdatedAt,
+		ID:           expense.ID,
+		FamilyID:     expense.FamilyID,
+		UserID:       expense.UserID,
+		Date:         expense.Date.Format("2006-01-02"),
+		Amount:       expense.Amount,
+		Currency:     expense.Currency,
+		BaseCurrency: expense.BaseCurrency,
+		ExchangeRate: expense.ExchangeRate,
+		AmountInBase: expense.AmountInBase,
+		RateDate:     rateDate,
+		RateSource:   expense.RateSource,
+		Title:        expense.Title,
+		CategoryIDs:  expense.CategoryIDs,
+		CreatedAt:    expense.CreatedAt,
+		UpdatedAt:    expense.UpdatedAt,
 	}
 }

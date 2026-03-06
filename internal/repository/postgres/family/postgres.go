@@ -129,6 +129,10 @@ func (r *PostgresRepository) UpdateFamilyName(ctx context.Context, familyID, nam
 	return r.db.WithContext(ctx).Model(&familydomain.Family{}).Where("id = ?", familyID).Update("name", name).Error
 }
 
+func (r *PostgresRepository) UpdateFamilyDefaultCurrency(ctx context.Context, familyID, currency string) error {
+	return r.db.WithContext(ctx).Model(&familydomain.Family{}).Where("id = ?", familyID).Update("default_currency", currency).Error
+}
+
 func (r *PostgresRepository) UpdateFamilyOwner(ctx context.Context, familyID, ownerID string) error {
 	return r.db.WithContext(ctx).Model(&familydomain.Family{}).Where("id = ?", familyID).Update("owner_id", ownerID).Error
 }

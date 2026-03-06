@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	ratesdomain "family-app-go/internal/domain/rates"
 )
 
 const categoryID1 = "11111111-1111-1111-1111-111111111111"
@@ -20,6 +22,34 @@ type fakeExpensesRepo struct {
 
 type fakeCategoriesCache struct {
 	values map[string][]Category
+}
+
+type fakeRatesProvider struct {
+	quote QuoteResult
+	err   error
+}
+
+type QuoteResult struct {
+	Rate   float64
+	Date   time.Time
+	Source string
+}
+
+func (f fakeRatesProvider) GetRate(_ context.Context, from, to string, onDate time.Time) (ratesdomain.Quote, error) {
+	if f.err != nil {
+		return ratesdomain.Quote{}, f.err
+	}
+	date := onDate
+	if !f.quote.Date.IsZero() {
+		date = f.quote.Date
+	}
+	return ratesdomain.Quote{
+		From:   strings.ToUpper(from),
+		To:     strings.ToUpper(to),
+		Rate:   f.quote.Rate,
+		Date:   date,
+		Source: f.quote.Source,
+	}, nil
 }
 
 func newFakeCategoriesCache() *fakeCategoriesCache {
@@ -64,6 +94,9 @@ func (r *fakeExpensesRepo) ListExpenses(ctx context.Context, familyID string, fi
 			continue
 		}
 		if filter.To != nil && expense.Date.After(*filter.To) {
+			continue
+		}
+		if filter.Currency != "" && !strings.EqualFold(expense.Currency, filter.Currency) {
 			continue
 		}
 		if len(filter.CategoryIDs) > 0 {
@@ -251,6 +284,90 @@ func TestCreateExpenseSuccess(t *testing.T) {
 	}
 }
 
+func TestCreateExpenseConvertsUsingRateProvider(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	svc := NewServiceWithDependencies(repo, newFakeCategoriesCache(), fakeRatesProvider{
+		quote: QuoteResult{
+			Rate:   0.3125,
+			Date:   time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC),
+			Source: "nbrb",
+		},
+	})
+
+	created, err := svc.CreateExpense(context.Background(), CreateExpenseInput{
+		FamilyID:     "fam-1",
+		UserID:       "user-1",
+		Date:         time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+		Amount:       32,
+		Currency:     "BYN",
+		BaseCurrency: "USD",
+		Title:        "Taxi",
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if created.BaseCurrency == nil || *created.BaseCurrency != "USD" {
+		t.Fatalf("expected base currency USD, got %+v", created.BaseCurrency)
+	}
+	if created.ExchangeRate == nil || *created.ExchangeRate != 0.3125 {
+		t.Fatalf("expected exchange rate 0.3125, got %+v", created.ExchangeRate)
+	}
+	if created.AmountInBase == nil || *created.AmountInBase != 10 {
+		t.Fatalf("expected amount_in_base 10, got %+v", created.AmountInBase)
+	}
+	if created.RateSource == nil || *created.RateSource != "nbrb" {
+		t.Fatalf("expected rate source nbrb, got %+v", created.RateSource)
+	}
+	if created.RateDate == nil || created.RateDate.Format("2006-01-02") != "2026-02-04" {
+		t.Fatalf("expected rate date 2026-02-04, got %+v", created.RateDate)
+	}
+}
+
+func TestCreateExpenseSameCurrencyUsesIdentityRate(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	svc := NewService(repo)
+
+	created, err := svc.CreateExpense(context.Background(), CreateExpenseInput{
+		FamilyID:     "fam-1",
+		UserID:       "user-1",
+		Date:         time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+		Amount:       9.99,
+		Currency:     "usd",
+		BaseCurrency: "USD",
+		Title:        "Book",
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if created.ExchangeRate == nil || *created.ExchangeRate != 1 {
+		t.Fatalf("expected identity rate 1, got %+v", created.ExchangeRate)
+	}
+	if created.AmountInBase == nil || *created.AmountInBase != 9.99 {
+		t.Fatalf("expected amount_in_base 9.99, got %+v", created.AmountInBase)
+	}
+	if created.RateSource == nil || *created.RateSource != "identity" {
+		t.Fatalf("expected identity source, got %+v", created.RateSource)
+	}
+}
+
+func TestCreateExpenseRateNotAvailable(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	svc := NewServiceWithDependencies(repo, newFakeCategoriesCache(), fakeRatesProvider{err: ratesdomain.ErrRateNotAvailable})
+
+	_, err := svc.CreateExpense(context.Background(), CreateExpenseInput{
+		FamilyID:     "fam-1",
+		UserID:       "user-1",
+		Date:         time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+		Amount:       12.5,
+		Currency:     "BYN",
+		BaseCurrency: "USD",
+		Title:        "Coffee",
+	})
+	if !errors.Is(err, ErrRateNotAvailable) {
+		t.Fatalf("expected ErrRateNotAvailable, got %v", err)
+	}
+}
+
 func TestCreateExpenseCategoryNotFound(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	svc := NewService(repo)
@@ -327,6 +444,44 @@ func TestUpdateExpenseSuccess(t *testing.T) {
 	}
 }
 
+func TestUpdateExpenseRecalculatesConversion(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.expenses["exp-1"] = &Expense{
+		ID:       "exp-1",
+		FamilyID: "fam-1",
+		UserID:   "user-1",
+		Date:     time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+		Amount:   5,
+		Currency: "USD",
+		Title:    "Old",
+	}
+
+	svc := NewServiceWithDependencies(repo, newFakeCategoriesCache(), fakeRatesProvider{
+		quote: QuoteResult{Rate: 0.3125, Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC), Source: "nbrb"},
+	})
+	result, err := svc.UpdateExpense(context.Background(), UpdateExpenseInput{
+		ID:           "exp-1",
+		FamilyID:     "fam-1",
+		Date:         time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+		Amount:       32,
+		Currency:     "BYN",
+		BaseCurrency: "USD",
+		Title:        "New",
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.AmountInBase == nil || *result.AmountInBase != 10 {
+		t.Fatalf("expected amount_in_base 10, got %+v", result.AmountInBase)
+	}
+	if result.ExchangeRate == nil || *result.ExchangeRate != 0.3125 {
+		t.Fatalf("expected exchange rate 0.3125, got %+v", result.ExchangeRate)
+	}
+	if result.BaseCurrency == nil || *result.BaseCurrency != "USD" {
+		t.Fatalf("expected base currency USD, got %+v", result.BaseCurrency)
+	}
+}
+
 func TestListExpensesMergesCategories(t *testing.T) {
 	repo := newFakeExpensesRepo()
 	repo.expenses["exp-1"] = &Expense{ID: "exp-1", FamilyID: "fam-1", UserID: "user-1", Date: time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC)}
@@ -390,6 +545,40 @@ func TestListExpensesFilterByCategoryIDsMultiple(t *testing.T) {
 	}
 	if total != 2 || len(items) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+}
+
+func TestListExpensesFilterByCurrency(t *testing.T) {
+	repo := newFakeExpensesRepo()
+	repo.expenses["exp-1"] = &Expense{
+		ID:       "exp-1",
+		FamilyID: "fam-1",
+		UserID:   "user-1",
+		Date:     time.Date(2026, 2, 5, 0, 0, 0, 0, time.UTC),
+		Currency: "BYN",
+	}
+	repo.expenses["exp-2"] = &Expense{
+		ID:       "exp-2",
+		FamilyID: "fam-1",
+		UserID:   "user-1",
+		Date:     time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC),
+		Currency: "USD",
+	}
+	repo.expenses["exp-3"] = &Expense{
+		ID:       "exp-3",
+		FamilyID: "fam-1",
+		UserID:   "user-1",
+		Date:     time.Date(2026, 2, 3, 0, 0, 0, 0, time.UTC),
+		Currency: "RUB",
+	}
+
+	svc := NewService(repo)
+	items, total, err := svc.ListExpenses(context.Background(), "fam-1", ListFilter{Currency: "USD"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if total != 1 || len(items) != 1 || items[0].ID != "exp-2" {
+		t.Fatalf("expected only USD expense exp-2, got %+v", items)
 	}
 }
 
