@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"family-app-go/internal/devseed"
 	familydomain "family-app-go/internal/domain/family"
 	"family-app-go/internal/transport/httpserver/middleware"
 	"github.com/go-chi/chi/v5"
@@ -75,6 +76,26 @@ func (h *Handlers) CreateFamily(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 		}
 		return
+	}
+
+	if h.FamilySeeder != nil {
+		seedResult, err := h.FamilySeeder.SeedFamily(r.Context(), devseed.SeedFamilyInput{
+			FamilyID: result.ID,
+			UserID:   user.ID,
+		})
+		if err != nil {
+			h.log.InternalError("families.create: seed mock data failed", err, "user_id", user.ID, "family_id", result.ID)
+		} else if seedResult.CategoriesCreated > 0 || seedResult.ExpensesCreated > 0 {
+			h.log.Info(
+				"families.create: seeded mock data",
+				"user_id", user.ID,
+				"family_id", result.ID,
+				"categories", seedResult.CategoriesCreated,
+				"expenses", seedResult.ExpensesCreated,
+				"from", seedResult.From,
+				"to", seedResult.To,
+			)
+		}
 	}
 
 	writeJSON(w, http.StatusCreated, toFamilyResponse(result))

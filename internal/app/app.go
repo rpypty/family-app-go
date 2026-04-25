@@ -6,6 +6,7 @@ import (
 
 	"family-app-go/internal/config"
 	"family-app-go/internal/db"
+	"family-app-go/internal/devseed"
 	analyticsdomain "family-app-go/internal/domain/analytics"
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
@@ -26,6 +27,7 @@ import (
 	userrepo "family-app-go/internal/repository/postgres/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
+	commonhandler "family-app-go/internal/transport/httpserver/handler/common"
 	"family-app-go/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -88,7 +90,20 @@ func New(log logger.Logger) (*App, error) {
 	syncService := syncdomain.NewService(syncRepo, expensesService, todosService)
 	gymRepo := gymrepo.NewPostgres(dbConn)
 	gymService := gymdomain.NewService(gymRepo)
-	handlers := handler.New(analyticsService, familyService, expensesService, ratesService, todosService, syncService, gymService, log)
+
+	var mockDataSeeder commonhandler.FamilySeeder
+	if cfg.MockDataSeed.Enabled {
+		log.Info("app: mock data seed enabled")
+		mockDataSeeder = devseed.NewExpenseSeeder(expensesService, devseed.Config{
+			Enabled:          cfg.MockDataSeed.Enabled,
+			LookbackMonths:   cfg.MockDataSeed.LookbackMonths,
+			MinCategories:    cfg.MockDataSeed.MinCategories,
+			MaxCategories:    cfg.MockDataSeed.MaxCategories,
+			MaxDailyExpenses: cfg.MockDataSeed.MaxDailyExpenses,
+			Currency:         cfg.MockDataSeed.Currency,
+		})
+	}
+	handlers := handler.New(analyticsService, familyService, expensesService, ratesService, todosService, syncService, gymService, log, mockDataSeeder)
 
 	log.Info("app: initializing router")
 	router := httpserver.NewRouter(cfg, handlers, userService, log)

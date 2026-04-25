@@ -22,9 +22,9 @@ type Handlers struct {
 	Gym      *gymhandler.Handlers
 }
 
-func New(analytics *analyticsdomain.Service, families *familydomain.Service, expenses *expensesdomain.Service, rates *ratesdomain.Service, todos *todosdomain.Service, sync *syncdomain.Service, gym *gymdomain.Service, log logger.Logger) *Handlers {
+func New(analytics *analyticsdomain.Service, families *familydomain.Service, expenses *expensesdomain.Service, rates *ratesdomain.Service, todos *todosdomain.Service, sync *syncdomain.Service, gym *gymdomain.Service, log logger.Logger, seeders ...commonhandler.FamilySeeder) *Handlers {
 	return &Handlers{
-		Common:   commonhandler.New(families, sync, log),
+		Common:   commonhandler.New(families, sync, log, seeders...),
 		Expenses: expenseshandler.New(analytics, families, expenses, rates, log),
 		Todos:    todoshandler.New(families, todos, log),
 		Gym:      gymhandler.New(gym, log),
