@@ -420,6 +420,11 @@ func (s *handlerMemoryFileStore) Load(_ context.Context, storageKey string) ([]b
 	return append([]byte{}, s.files[storageKey]...), nil
 }
 
+func (s *handlerMemoryFileStore) Delete(_ context.Context, storageKey string) error {
+	delete(s.files, storageKey)
+	return nil
+}
+
 type handlerReceiptRepo struct {
 	jobs   map[string]*receiptsdomain.Job
 	files  map[string][]receiptsdomain.File

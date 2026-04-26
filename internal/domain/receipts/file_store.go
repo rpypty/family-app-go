@@ -11,6 +11,7 @@ import (
 type FileStore interface {
 	Save(ctx context.Context, jobID, fileID string, file UploadedFile) (string, error)
 	Load(ctx context.Context, storageKey string) ([]byte, error)
+	Delete(ctx context.Context, storageKey string) error
 }
 
 type LocalFileStore struct {
@@ -44,4 +45,31 @@ func (s *LocalFileStore) Load(_ context.Context, storageKey string) ([]byte, err
 		return nil, fmt.Errorf("read receipt file: %w", err)
 	}
 	return data, nil
+}
+
+func (s *LocalFileStore) Delete(_ context.Context, storageKey string) error {
+	cleanKey := filepath.Clean(storageKey)
+	if filepath.IsAbs(cleanKey) || cleanKey == ".." || strings.HasPrefix(cleanKey, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("invalid receipt file storage key")
+	}
+
+	path := filepath.Join(s.root, cleanKey)
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("delete receipt file: %w", err)
+	}
+
+	rootClean := filepath.Clean(s.root)
+	for dir := filepath.Dir(path); dir != "." && dir != string(filepath.Separator); dir = filepath.Dir(dir) {
+		if dir == rootClean {
+			break
+		}
+		if err := os.Remove(dir); err != nil {
+			break
+		}
+	}
+
+	return nil
 }

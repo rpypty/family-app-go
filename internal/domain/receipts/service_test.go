@@ -174,6 +174,112 @@ func TestApproveParseRollsBackExpensesWhenReceiptUpdateFails(t *testing.T) {
 	}
 }
 
+func TestApproveParseDeletesStoredFilesAfterSuccess(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo := newFakeReceiptRepo()
+	expenseRepo := newFakeReceiptExpenseRepo()
+	receiptRepo.expenseRepo = expenseRepo
+	fileStore := newMemoryReceiptFileStore()
+	storageKey := testJobID + "/file-1"
+	fileStore.files[storageKey] = []byte("receipt-bytes")
+	receiptRepo.jobs[testJobID] = &Job{
+		ID:       testJobID,
+		FamilyID: testFamilyID,
+		UserID:   testUserID,
+		Status:   StatusReady,
+	}
+	receiptRepo.files[testJobID] = []File{{
+		ID:         "file-1",
+		JobID:      testJobID,
+		StorageKey: &storageKey,
+	}}
+	receiptRepo.items[testJobID] = []Item{{
+		ID:              "item-1",
+		JobID:           testJobID,
+		RawName:         "Milk",
+		LineTotal:       10,
+		FinalLineTotal:  floatPtr(10),
+		FinalCategoryID: stringPtr(testCategoryID),
+	}}
+	receiptRepo.drafts[testJobID] = []DraftExpense{
+		{
+			ID:         testDraftID,
+			JobID:      testJobID,
+			Title:      "Products",
+			Amount:     10,
+			Currency:   "BYN",
+			CategoryID: testCategoryID,
+			Warnings:   []byte("[]"),
+		},
+	}
+
+	service := NewServiceWithOptions(receiptRepo, nil, nil, fakeExpenseBatchCreator{}, ServiceOptions{
+		FileStore:     fileStore,
+		WorkerEnabled: false,
+	})
+	date := time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC)
+
+	created, err := service.ApproveParse(ctx, ApproveInput{
+		FamilyID:     testFamilyID,
+		UserID:       testUserID,
+		BaseCurrency: "BYN",
+		JobID:        testJobID,
+		Expenses: []ApproveExpenseInput{{
+			DraftID:     testDraftID,
+			Date:        date,
+			Title:       "Products",
+			Amount:      10,
+			Currency:    "BYN",
+			CategoryIDs: []string{testCategoryID},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("approve parse: %v", err)
+	}
+	if len(created) != 1 {
+		t.Fatalf("expected 1 created expense, got %d", len(created))
+	}
+	if _, ok := fileStore.files[storageKey]; ok {
+		t.Fatal("expected stored receipt file to be deleted after approve")
+	}
+}
+
+func TestCancelParseDeletesStoredFilesAfterSuccess(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo := newFakeReceiptRepo()
+	receiptRepo.expenseRepo = newFakeReceiptExpenseRepo()
+	fileStore := newMemoryReceiptFileStore()
+	storageKey := testJobID + "/file-1"
+	fileStore.files[storageKey] = []byte("receipt-bytes")
+	receiptRepo.jobs[testJobID] = &Job{
+		ID:       testJobID,
+		FamilyID: testFamilyID,
+		UserID:   testUserID,
+		Status:   StatusQueued,
+	}
+	receiptRepo.files[testJobID] = []File{{
+		ID:         "file-1",
+		JobID:      testJobID,
+		StorageKey: &storageKey,
+	}}
+
+	service := NewServiceWithOptions(receiptRepo, nil, nil, fakeExpenseBatchCreator{}, ServiceOptions{
+		FileStore:     fileStore,
+		WorkerEnabled: false,
+	})
+
+	job, err := service.CancelParse(ctx, testFamilyID, testJobID)
+	if err != nil {
+		t.Fatalf("cancel parse: %v", err)
+	}
+	if job.Status != StatusCancelled {
+		t.Fatalf("expected cancelled status, got %s", job.Status)
+	}
+	if _, ok := fileStore.files[storageKey]; ok {
+		t.Fatal("expected stored receipt file to be deleted after cancel")
+	}
+}
+
 func TestProcessNextMarksInvalidParserOutputAsInvalidResponse(t *testing.T) {
 	ctx := context.Background()
 	receiptRepo := newFakeReceiptRepo()
@@ -447,6 +553,10 @@ func (mixedCategoryParser) ParseReceipt(_ context.Context, input ParseReceiptInp
 	}, nil
 }
 
+func floatPtr(value float64) *float64 {
+	return &value
+}
+
 type fakeCategoryProvider struct {
 	categories []expensesdomain.Category
 }
@@ -475,6 +585,11 @@ func (s *memoryReceiptFileStore) Load(_ context.Context, storageKey string) ([]b
 		return nil, ErrInvalidReceiptFile
 	}
 	return append([]byte{}, data...), nil
+}
+
+func (s *memoryReceiptFileStore) Delete(_ context.Context, storageKey string) error {
+	delete(s.files, storageKey)
+	return nil
 }
 
 type fakeReceiptRepo struct {

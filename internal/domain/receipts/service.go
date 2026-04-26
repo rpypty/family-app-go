@@ -215,6 +215,7 @@ func (s *Service) CancelParse(ctx context.Context, familyID, jobID string) (*Job
 	if err := s.repo.UpdateJob(ctx, job); err != nil {
 		return nil, err
 	}
+	s.cleanupStoredFiles(ctx, job.ID)
 	return job, nil
 }
 
@@ -313,6 +314,8 @@ func (s *Service) ApproveParse(ctx context.Context, input ApproveInput) ([]expen
 	if err != nil {
 		return nil, err
 	}
+
+	s.cleanupStoredFiles(ctx, job.ID)
 
 	return created, nil
 }
@@ -558,6 +561,19 @@ func (s *Service) loadJobFile(ctx context.Context, jobID string) (UploadedFile, 
 		SHA256:      stringValue(file.SHA256),
 		Data:        data,
 	}, nil
+}
+
+func (s *Service) cleanupStoredFiles(ctx context.Context, jobID string) {
+	files, err := s.repo.ListFilesByJobID(ctx, jobID)
+	if err != nil {
+		return
+	}
+	for _, file := range files {
+		if file.StorageKey == nil || strings.TrimSpace(*file.StorageKey) == "" {
+			continue
+		}
+		_ = s.fileStore.Delete(ctx, *file.StorageKey)
+	}
 }
 
 func (s *Service) markFailed(ctx context.Context, job *Job, code, message string) {
