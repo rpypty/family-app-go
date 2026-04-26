@@ -8,6 +8,7 @@ coverage*
 
 # Local env
 .env
+data/
 
 # Editor
 .DS_Store

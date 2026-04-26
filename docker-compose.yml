@@ -22,7 +22,7 @@ services:
       DB_NAME: ${DB_NAME:-family_app}
       DB_SSLMODE: ${DB_SSLMODE:-disable}
       DB_TIMEZONE: ${DB_TIMEZONE:-UTC}
-      HTTP_PORT: ${HTTP_PORT:-8080}
+      HTTP_PORT: 8080
     depends_on:
       - db
     ports:

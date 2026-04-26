@@ -2,12 +2,15 @@ package db
 
 import (
 	"fmt"
+	stdlog "log"
+	"os"
 	"time"
 
 	"family-app-go/internal/config"
 	"family-app-go/pkg/logger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 const (
@@ -34,7 +37,14 @@ func NewPostgres(log logger.Logger, cfg config.DBConfig) (*gorm.DB, error) {
 	}
 
 	dsn := cfg.GetDSN()
-	gormDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	gormDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: gormlogger.New(stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), gormlogger.Config{
+			SlowThreshold:             time.Second,
+			LogLevel:                  gormlogger.Warn,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  false,
+		}),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}

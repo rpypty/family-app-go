@@ -61,6 +61,13 @@ func NewRouter(cfg config.Config, handlers *handler.Handlers, profiles authmw.Pr
 			r.Patch("/categories/{id}", handlers.Expenses.UpdateCategory)
 			r.Delete("/categories/{id}", handlers.Expenses.DeleteCategory)
 
+			r.Post("/receipt-parses", handlers.Receipts.CreateParse)
+			r.Get("/receipt-parses/active", handlers.Receipts.GetActiveParse)
+			r.Get("/receipt-parses/{id}", handlers.Receipts.GetParse)
+			r.Patch("/receipt-parses/{id}/items", handlers.Receipts.UpdateItems)
+			r.Post("/receipt-parses/{id}/approve", handlers.Receipts.ApproveParse)
+			r.Post("/receipt-parses/{id}/cancel", handlers.Receipts.CancelParse)
+
 			r.Get("/todo-lists", handlers.Todos.ListTodoLists)
 			r.Post("/todo-lists", handlers.Todos.CreateTodoList)
 			r.Patch("/todo-lists/{list_id}", handlers.Todos.UpdateTodoList)

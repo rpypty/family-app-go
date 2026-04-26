@@ -12,6 +12,7 @@ import (
 	familydomain "family-app-go/internal/domain/family"
 	gymdomain "family-app-go/internal/domain/gym"
 	ratesdomain "family-app-go/internal/domain/rates"
+	receiptsdomain "family-app-go/internal/domain/receipts"
 	syncdomain "family-app-go/internal/domain/sync"
 	todosdomain "family-app-go/internal/domain/todos"
 	userdomain "family-app-go/internal/domain/user"
@@ -22,6 +23,7 @@ import (
 	familyrepo "family-app-go/internal/repository/postgres/family"
 	gymrepo "family-app-go/internal/repository/postgres/gym"
 	postgresratesrepo "family-app-go/internal/repository/postgres/rates"
+	receiptsrepo "family-app-go/internal/repository/postgres/receipts"
 	syncrepo "family-app-go/internal/repository/postgres/sync"
 	todosrepo "family-app-go/internal/repository/postgres/todos"
 	userrepo "family-app-go/internal/repository/postgres/user"
@@ -90,6 +92,15 @@ func New(log logger.Logger) (*App, error) {
 	syncService := syncdomain.NewService(syncRepo, expensesService, todosService)
 	gymRepo := gymrepo.NewPostgres(dbConn)
 	gymService := gymdomain.NewService(gymRepo)
+	receiptRepo := receiptsrepo.NewPostgres(dbConn)
+	receiptParser, err := buildReceiptParser(cfg.ReceiptParser, log)
+	if err != nil {
+		return nil, fmt.Errorf("initialize receipt parser: %w", err)
+	}
+	receiptService := receiptsdomain.NewServiceWithOptions(receiptRepo, receiptParser, expensesService, expensesService, receiptsdomain.ServiceOptions{
+		FileStore:     receiptsdomain.NewLocalFileStore(cfg.ReceiptParser.FileStorageDir),
+		WorkerEnabled: true,
+	})
 
 	var mockDataSeeder commonhandler.FamilySeeder
 	if cfg.MockDataSeed.Enabled {
@@ -103,7 +114,7 @@ func New(log logger.Logger) (*App, error) {
 			Currency:         cfg.MockDataSeed.Currency,
 		})
 	}
-	handlers := handler.New(analyticsService, familyService, expensesService, ratesService, todosService, syncService, gymService, log, mockDataSeeder)
+	handlers := handler.New(analyticsService, familyService, expensesService, ratesService, todosService, syncService, gymService, receiptService, log, mockDataSeeder)
 
 	log.Info("app: initializing router")
 	router := httpserver.NewRouter(cfg, handlers, userService, log)
