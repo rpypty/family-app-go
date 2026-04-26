@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"family-app-go/pkg/logger"
@@ -15,8 +16,29 @@ type Config struct {
 	OfflineSyncEnabled bool
 	TopCategories      TopCategoriesConfig
 	Rates              RatesConfig
+	MockDataSeed       MockDataSeedConfig
+	ReceiptParser      ReceiptParserConfig
 	DB                 DBConfig
 	Supabase           SupabaseConfig
+}
+
+type ReceiptParserConfig struct {
+	FileStorageDir string
+	Enabled        bool
+	Provider       string
+	OpenAIAPIKey   string
+	OpenAIModel    string
+	OpenAIBaseURL  string
+	OpenAITimeout  time.Duration
+}
+
+type MockDataSeedConfig struct {
+	Enabled          bool
+	LookbackMonths   int
+	MinCategories    int
+	MaxCategories    int
+	MaxDailyExpenses int
+	Currency         string
 }
 
 type TopCategoriesConfig struct {
@@ -67,9 +89,11 @@ func Load(log logger.Logger) (Config, error) {
 		return Config{}, fmt.Errorf("load .env: %w", err)
 	}
 
+	env := getEnv("ENV", "development")
+
 	return Config{
 		HTTPPort:           getEnv("HTTP_PORT", "8080"),
-		Env:                getEnv("ENV", "development"),
+		Env:                env,
 		OfflineSyncEnabled: getEnvBool("OFFLINE_SYNC_ENABLED", true),
 		TopCategories: TopCategoriesConfig{
 			Enabled:       getEnvBool("TOP_CATEGORIES_ENABLED", true),
@@ -85,6 +109,23 @@ func Load(log logger.Logger) (Config, error) {
 			RateCacheTTL:       getEnvDuration("RATES_CACHE_TTL", 12*time.Hour),
 			CurrenciesCacheTTL: getEnvDuration("RATES_CURRENCIES_CACHE_TTL", 24*time.Hour),
 			FallbackDays:       getEnvInt("RATES_FALLBACK_DAYS", 7),
+		},
+		MockDataSeed: MockDataSeedConfig{
+			Enabled:          getEnvBool("MOCK_DATA_SEED_ENABLED", strings.EqualFold(env, "development")),
+			LookbackMonths:   getEnvInt("MOCK_DATA_SEED_LOOKBACK_MONTHS", 6),
+			MinCategories:    getEnvInt("MOCK_DATA_SEED_MIN_CATEGORIES", 10),
+			MaxCategories:    getEnvInt("MOCK_DATA_SEED_MAX_CATEGORIES", 20),
+			MaxDailyExpenses: getEnvInt("MOCK_DATA_SEED_MAX_DAILY_EXPENSES", 6),
+			Currency:         getEnv("MOCK_DATA_SEED_CURRENCY", "USD"),
+		},
+		ReceiptParser: ReceiptParserConfig{
+			FileStorageDir: getEnv("RECEIPT_FILE_STORAGE_DIR", "data/receipt-parses"),
+			Enabled:        getEnvBool("RECEIPT_PARSER_ENABLED", false),
+			Provider:       getEnv("RECEIPT_PARSER_PROVIDER", "mock"),
+			OpenAIAPIKey:   getEnv("OPENAI_API_KEY", ""),
+			OpenAIModel:    getEnv("OPENAI_MODEL", "gpt-4o-mini"),
+			OpenAIBaseURL:  getEnv("OPENAI_BASE_URL", "https://api.openai.com"),
+			OpenAITimeout:  getEnvDuration("OPENAI_TIMEOUT", 20*time.Second),
 		},
 		DB: DBConfig{
 			DSN:             getEnv("DB_DSN", ""),

@@ -6,11 +6,13 @@ import (
 
 	"family-app-go/internal/config"
 	"family-app-go/internal/db"
+	"family-app-go/internal/devseed"
 	analyticsdomain "family-app-go/internal/domain/analytics"
 	expensesdomain "family-app-go/internal/domain/expenses"
 	familydomain "family-app-go/internal/domain/family"
 	gymdomain "family-app-go/internal/domain/gym"
 	ratesdomain "family-app-go/internal/domain/rates"
+	receiptsdomain "family-app-go/internal/domain/receipts"
 	syncdomain "family-app-go/internal/domain/sync"
 	todosdomain "family-app-go/internal/domain/todos"
 	userdomain "family-app-go/internal/domain/user"
@@ -21,11 +23,13 @@ import (
 	familyrepo "family-app-go/internal/repository/postgres/family"
 	gymrepo "family-app-go/internal/repository/postgres/gym"
 	postgresratesrepo "family-app-go/internal/repository/postgres/rates"
+	receiptsrepo "family-app-go/internal/repository/postgres/receipts"
 	syncrepo "family-app-go/internal/repository/postgres/sync"
 	todosrepo "family-app-go/internal/repository/postgres/todos"
 	userrepo "family-app-go/internal/repository/postgres/user"
 	"family-app-go/internal/transport/httpserver"
 	"family-app-go/internal/transport/httpserver/handler"
+	commonhandler "family-app-go/internal/transport/httpserver/handler/common"
 	"family-app-go/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -88,7 +92,29 @@ func New(log logger.Logger) (*App, error) {
 	syncService := syncdomain.NewService(syncRepo, expensesService, todosService)
 	gymRepo := gymrepo.NewPostgres(dbConn)
 	gymService := gymdomain.NewService(gymRepo)
-	handlers := handler.New(analyticsService, familyService, expensesService, ratesService, todosService, syncService, gymService, log)
+	receiptRepo := receiptsrepo.NewPostgres(dbConn)
+	receiptParser, err := buildReceiptParser(cfg.ReceiptParser, log)
+	if err != nil {
+		return nil, fmt.Errorf("initialize receipt parser: %w", err)
+	}
+	receiptService := receiptsdomain.NewServiceWithOptions(receiptRepo, receiptParser, expensesService, expensesService, receiptsdomain.ServiceOptions{
+		FileStore:     receiptsdomain.NewLocalFileStore(cfg.ReceiptParser.FileStorageDir),
+		WorkerEnabled: true,
+	})
+
+	var mockDataSeeder commonhandler.FamilySeeder
+	if cfg.MockDataSeed.Enabled {
+		log.Info("app: mock data seed enabled")
+		mockDataSeeder = devseed.NewExpenseSeeder(expensesService, devseed.Config{
+			Enabled:          cfg.MockDataSeed.Enabled,
+			LookbackMonths:   cfg.MockDataSeed.LookbackMonths,
+			MinCategories:    cfg.MockDataSeed.MinCategories,
+			MaxCategories:    cfg.MockDataSeed.MaxCategories,
+			MaxDailyExpenses: cfg.MockDataSeed.MaxDailyExpenses,
+			Currency:         cfg.MockDataSeed.Currency,
+		})
+	}
+	handlers := handler.New(analyticsService, familyService, expensesService, ratesService, todosService, syncService, gymService, receiptService, log, mockDataSeeder)
 
 	log.Info("app: initializing router")
 	router := httpserver.NewRouter(cfg, handlers, userService, log)

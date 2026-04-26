@@ -128,6 +128,112 @@ func (s *Service) CreateExpense(ctx context.Context, input CreateExpenseInput) (
 	return &ExpenseWithCategories{Expense: expense, CategoryIDs: categoryIDs}, nil
 }
 
+func (s *Service) CreateExpensesBatch(ctx context.Context, inputs []CreateExpenseInput) ([]ExpenseWithCategories, error) {
+	expenses, categoryIDsByExpenseID, err := s.prepareExpensesBatch(ctx, inputs)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.repo.Transaction(ctx, func(tx Repository) error {
+		return createPreparedExpensesBatch(ctx, tx, inputs, expenses, categoryIDsByExpenseID)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return expensesBatchResult(expenses, categoryIDsByExpenseID), nil
+}
+
+func (s *Service) CreateExpensesBatchWithRepository(ctx context.Context, repo Repository, inputs []CreateExpenseInput) ([]ExpenseWithCategories, error) {
+	expenses, categoryIDsByExpenseID, err := s.prepareExpensesBatch(ctx, inputs)
+	if err != nil {
+		return nil, err
+	}
+	if err := createPreparedExpensesBatch(ctx, repo, inputs, expenses, categoryIDsByExpenseID); err != nil {
+		return nil, err
+	}
+	return expensesBatchResult(expenses, categoryIDsByExpenseID), nil
+}
+
+func (s *Service) prepareExpensesBatch(ctx context.Context, inputs []CreateExpenseInput) ([]Expense, map[string][]string, error) {
+	if len(inputs) == 0 {
+		return []Expense{}, map[string][]string{}, nil
+	}
+
+	expenses := make([]Expense, 0, len(inputs))
+	categoryIDsByExpenseID := make(map[string][]string, len(inputs))
+	for _, input := range inputs {
+		currency, baseCurrency, err := s.validateInput(input.Currency, input.BaseCurrency, input.Title)
+		if err != nil {
+			return nil, nil, err
+		}
+		if input.Amount <= 0 {
+			return nil, nil, fmt.Errorf("amount must be positive")
+		}
+
+		expenseID, err := newUUID()
+		if err != nil {
+			return nil, nil, err
+		}
+		expense := Expense{
+			ID:       expenseID,
+			FamilyID: input.FamilyID,
+			UserID:   input.UserID,
+			Date:     input.Date,
+			Amount:   input.Amount,
+			Currency: currency,
+			Title:    strings.TrimSpace(input.Title),
+		}
+		if err := s.applyCurrencyConversion(ctx, &expense, baseCurrency); err != nil {
+			return nil, nil, err
+		}
+
+		categoryIDs := normalizeCategoryIDs(input.CategoryIDs)
+		if err := validateCategoryIDs(categoryIDs); err != nil {
+			return nil, nil, err
+		}
+		expenses = append(expenses, expense)
+		categoryIDsByExpenseID[expense.ID] = categoryIDs
+	}
+
+	return expenses, categoryIDsByExpenseID, nil
+}
+
+func createPreparedExpensesBatch(ctx context.Context, repo Repository, inputs []CreateExpenseInput, expenses []Expense, categoryIDsByExpenseID map[string][]string) error {
+	for index, expense := range expenses {
+		categoryIDs := categoryIDsByExpenseID[expense.ID]
+		if len(categoryIDs) > 0 {
+			count, err := repo.CountCategoriesByIDs(ctx, inputs[index].FamilyID, categoryIDs)
+			if err != nil {
+				return err
+			}
+			if count != int64(len(categoryIDs)) {
+				return ErrCategoryNotFound
+			}
+		}
+
+		expenseCopy := expense
+		if err := repo.CreateExpense(ctx, &expenseCopy); err != nil {
+			return err
+		}
+		if err := repo.ReplaceExpenseCategories(ctx, expense.ID, categoryIDs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func expensesBatchResult(expenses []Expense, categoryIDsByExpenseID map[string][]string) []ExpenseWithCategories {
+	result := make([]ExpenseWithCategories, 0, len(expenses))
+	for _, expense := range expenses {
+		result = append(result, ExpenseWithCategories{
+			Expense:     expense,
+			CategoryIDs: categoryIDsByExpenseID[expense.ID],
+		})
+	}
+	return result
+}
+
 func (s *Service) UpdateExpense(ctx context.Context, input UpdateExpenseInput) (*ExpenseWithCategories, error) {
 	currency, baseCurrency, err := s.validateInput(input.Currency, input.BaseCurrency, input.Title)
 	if err != nil {
