@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
@@ -18,7 +19,11 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-const maxReceiptFileSizeBytes = 8 * 1024 * 1024
+const (
+	maxReceiptFileSizeBytes      = 8 * 1024 * 1024
+	maxReceiptFiles              = 5
+	maxReceiptTotalFileSizeBytes = 40 * 1024 * 1024
+)
 
 type activeParseResponse struct {
 	Item *receiptParseSummaryResponse `json:"item"`
@@ -363,6 +368,9 @@ func (h *Handlers) writeServiceError(w http.ResponseWriter, err error, operation
 	case errors.Is(err, receiptsdomain.ErrReceiptFileTooLarge):
 		h.log.BusinessError(operation+": file too large", err, "user_id", userID, "family_id", familyID, "job_id", jobID)
 		writeError(w, http.StatusRequestEntityTooLarge, "receipt_file_too_large", "receipt file is too large")
+	case errors.Is(err, receiptsdomain.ErrTooManyReceiptFiles):
+		h.log.BusinessError(operation+": too many files", err, "user_id", userID, "family_id", familyID, "job_id", jobID)
+		writeError(w, http.StatusBadRequest, "too_many_receipt_files", "too many receipt files")
 	case errors.Is(err, receiptsdomain.ErrCategorySelectionRequired):
 		h.log.BusinessError(operation+": category selection required", err, "user_id", userID, "family_id", familyID, "job_id", jobID)
 		writeError(w, http.StatusBadRequest, "category_selection_required", "category selection is required")
@@ -385,37 +393,25 @@ func (h *Handlers) writeServiceError(w http.ResponseWriter, err error, operation
 }
 
 func parseCreateParseForm(w http.ResponseWriter, r *http.Request, familyID, userID, defaultCurrency string) (receiptsdomain.CreateParseInput, error) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxReceiptFileSizeBytes+1024*1024)
-	if err := r.ParseMultipartForm(maxReceiptFileSizeBytes); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, maxReceiptTotalFileSizeBytes+1024*1024)
+	if err := r.ParseMultipartForm(maxReceiptTotalFileSizeBytes); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			return receiptsdomain.CreateParseInput{}, receiptsdomain.ErrReceiptFileTooLarge
 		}
 		return receiptsdomain.CreateParseInput{}, receiptsdomain.ErrInvalidReceiptFile
 	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
 
-	file, header, err := r.FormFile("receipt")
-	if err != nil {
+	if r.MultipartForm == nil || len(r.MultipartForm.File["receipt"]) == 0 {
 		return receiptsdomain.CreateParseInput{}, receiptsdomain.ErrInvalidReceiptFile
 	}
-	defer file.Close()
-
-	data, err := io.ReadAll(io.LimitReader(file, maxReceiptFileSizeBytes+1))
-	if err != nil {
-		return receiptsdomain.CreateParseInput{}, receiptsdomain.ErrInvalidReceiptFile
+	fileHeaders := r.MultipartForm.File["receipt"]
+	if len(fileHeaders) > maxReceiptFiles {
+		return receiptsdomain.CreateParseInput{}, receiptsdomain.ErrTooManyReceiptFiles
 	}
-	if len(data) > maxReceiptFileSizeBytes {
-		return receiptsdomain.CreateParseInput{}, receiptsdomain.ErrReceiptFileTooLarge
-	}
-
-	contentType := strings.TrimSpace(header.Header.Get("Content-Type"))
-	if contentType == "" {
-		contentType = http.DetectContentType(data)
-	}
-	if mediaType, _, err := mime.ParseMediaType(contentType); err == nil {
-		contentType = mediaType
-	}
-	hash := sha256.Sum256(data)
 
 	allCategories := parseBoolish(r.FormValue("all_categories"))
 	categoryIDs := formValuesCSV(r, "category_ids")
@@ -433,6 +429,20 @@ func parseCreateParseForm(w http.ResponseWriter, r *http.Request, familyID, user
 		currency = strings.ToUpper(strings.TrimSpace(defaultCurrency))
 	}
 
+	files := make([]receiptsdomain.UploadedFile, 0, len(fileHeaders))
+	var totalSize int64
+	for _, header := range fileHeaders {
+		uploadedFile, err := readReceiptMultipartFile(header)
+		if err != nil {
+			return receiptsdomain.CreateParseInput{}, err
+		}
+		totalSize += uploadedFile.SizeBytes
+		if totalSize > maxReceiptTotalFileSizeBytes {
+			return receiptsdomain.CreateParseInput{}, receiptsdomain.ErrReceiptFileTooLarge
+		}
+		files = append(files, uploadedFile)
+	}
+
 	return receiptsdomain.CreateParseInput{
 		FamilyID:            familyID,
 		UserID:              userID,
@@ -440,18 +450,48 @@ func parseCreateParseForm(w http.ResponseWriter, r *http.Request, familyID, user
 		SelectedCategoryIDs: categoryIDs,
 		RequestedDate:       requestedDate,
 		RequestedCurrency:   currency,
-		File: receiptsdomain.UploadedFile{
-			FileName:    header.Filename,
-			ContentType: contentType,
-			SizeBytes:   int64(len(data)),
-			SHA256:      hex.EncodeToString(hash[:]),
-			Data:        data,
-		},
+		Files:               files,
+		File:                files[0],
+	}, nil
+}
+
+func readReceiptMultipartFile(header *multipart.FileHeader) (receiptsdomain.UploadedFile, error) {
+	file, err := header.Open()
+	if err != nil {
+		return receiptsdomain.UploadedFile{}, receiptsdomain.ErrInvalidReceiptFile
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxReceiptFileSizeBytes+1))
+	if err != nil {
+		return receiptsdomain.UploadedFile{}, receiptsdomain.ErrInvalidReceiptFile
+	}
+	if len(data) > maxReceiptFileSizeBytes {
+		return receiptsdomain.UploadedFile{}, receiptsdomain.ErrReceiptFileTooLarge
+	}
+
+	contentType := strings.TrimSpace(header.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	if mediaType, _, err := mime.ParseMediaType(contentType); err == nil {
+		contentType = mediaType
+	}
+	hash := sha256.Sum256(data)
+
+	return receiptsdomain.UploadedFile{
+		FileName:    header.Filename,
+		ContentType: contentType,
+		SizeBytes:   int64(len(data)),
+		SHA256:      hex.EncodeToString(hash[:]),
+		Data:        data,
 	}, nil
 }
 
 func writeReceiptError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, receiptsdomain.ErrTooManyReceiptFiles):
+		writeError(w, http.StatusBadRequest, "too_many_receipt_files", "too many receipt files")
 	case errors.Is(err, receiptsdomain.ErrReceiptFileTooLarge):
 		writeError(w, http.StatusRequestEntityTooLarge, "receipt_file_too_large", "receipt file is too large")
 	case errors.Is(err, receiptsdomain.ErrInvalidReceiptFile):

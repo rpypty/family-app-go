@@ -77,6 +77,38 @@ func TestCreateParseReturnsConflictWhenActiveJobExists(t *testing.T) {
 	}
 }
 
+func TestCreateParseAcceptsMultipleReceiptParts(t *testing.T) {
+	repo := newHandlerReceiptRepo()
+	h := newTestHandlers(repo)
+	body, contentType := multipartReceiptBodyWithFiles(t, "receipt-1.png", "receipt-2.png")
+	req := authenticatedRequest(http.MethodPost, "/api/receipt-parses", body)
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+
+	h.CreateParse(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(repo.jobs) != 1 {
+		t.Fatalf("expected one job, got %+v", repo.jobs)
+	}
+	var jobID string
+	for id := range repo.jobs {
+		jobID = id
+	}
+	files := repo.files[jobID]
+	if len(files) != 2 {
+		t.Fatalf("expected two files, got %+v", files)
+	}
+	if files[0].Ordinal != 0 || files[0].FileName != "receipt-1.png" {
+		t.Fatalf("unexpected first file %+v", files[0])
+	}
+	if files[1].Ordinal != 1 || files[1].FileName != "receipt-2.png" {
+		t.Fatalf("unexpected second file %+v", files[1])
+	}
+}
+
 func TestGetParseReturnsReadyDrafts(t *testing.T) {
 	repo := newHandlerReceiptRepo()
 	total := 10.0
@@ -269,20 +301,27 @@ func authenticatedRequest(method, target string, body io.Reader) *http.Request {
 
 func multipartReceiptBody(t *testing.T) (io.Reader, string) {
 	t.Helper()
+	return multipartReceiptBodyWithFiles(t, "receipt.png")
+}
+
+func multipartReceiptBodyWithFiles(t *testing.T, filenames ...string) (io.Reader, string) {
+	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	if err := writer.WriteField("category_ids", handlerCategoryID); err != nil {
 		t.Fatalf("write category field: %v", err)
 	}
-	header := make(textproto.MIMEHeader)
-	header.Set("Content-Disposition", `form-data; name="receipt"; filename="receipt.png"`)
-	header.Set("Content-Type", "image/png")
-	part, err := writer.CreatePart(header)
-	if err != nil {
-		t.Fatalf("create receipt file: %v", err)
-	}
-	if _, err := part.Write([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}); err != nil {
-		t.Fatalf("write receipt file: %v", err)
+	for _, filename := range filenames {
+		header := make(textproto.MIMEHeader)
+		header.Set("Content-Disposition", `form-data; name="receipt"; filename="`+filename+`"`)
+		header.Set("Content-Type", "image/png")
+		part, err := writer.CreatePart(header)
+		if err != nil {
+			t.Fatalf("create receipt file: %v", err)
+		}
+		if _, err := part.Write([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}); err != nil {
+			t.Fatalf("write receipt file: %v", err)
+		}
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close multipart writer: %v", err)

@@ -87,6 +87,83 @@ func TestProcessNextRecoversQueuedJobFromPersistedFile(t *testing.T) {
 	}
 }
 
+func TestProcessNextPassesMultiplePersistedFilesToParser(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo := newFakeReceiptRepo()
+	expenseRepo := newFakeReceiptExpenseRepo()
+	receiptRepo.expenseRepo = expenseRepo
+	fileStore := newMemoryReceiptFileStore()
+	parser := &captureParser{}
+	categoryProvider := fakeCategoryProvider{
+		categories: []expensesdomain.Category{
+			{ID: testCategoryID, FamilyID: testFamilyID, Name: "Products"},
+		},
+	}
+
+	service := NewServiceWithOptions(receiptRepo, parser, categoryProvider, fakeExpenseBatchCreator{}, ServiceOptions{
+		FileStore:     fileStore,
+		WorkerEnabled: false,
+		WorkerID:      "test-worker",
+	})
+
+	job, err := service.CreateParse(ctx, CreateParseInput{
+		FamilyID:            testFamilyID,
+		UserID:              testUserID,
+		CategoryMode:        CategoryModeSelected,
+		SelectedCategoryIDs: []string{testCategoryID},
+		RequestedCurrency:   "BYN",
+		Files: []UploadedFile{
+			{
+				FileName:    "receipt-1.png",
+				ContentType: "image/png",
+				SizeBytes:   int64(len(validPNGBytes)),
+				SHA256:      "sha-1",
+				Data:        validPNGBytes,
+			},
+			{
+				FileName:    "receipt-2.png",
+				ContentType: "image/png",
+				SizeBytes:   int64(len(validPNGBytes)),
+				SHA256:      "sha-2",
+				Data:        validPNGBytes,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create parse: %v", err)
+	}
+
+	files, err := receiptRepo.ListFilesByJobID(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("list files: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected two persisted files, got %#v", files)
+	}
+	for index, file := range files {
+		if file.Ordinal != index {
+			t.Fatalf("expected ordinal %d, got %+v", index, file)
+		}
+		if file.StorageKey == nil || *file.StorageKey == "" {
+			t.Fatalf("expected storage key for file %+v", file)
+		}
+	}
+
+	processed, err := service.ProcessNext(ctx)
+	if err != nil {
+		t.Fatalf("process next: %v", err)
+	}
+	if !processed {
+		t.Fatal("expected queued job to be processed")
+	}
+	if len(parser.input.Files) != 2 {
+		t.Fatalf("expected parser to receive two files, got %+v", parser.input.Files)
+	}
+	if parser.input.Files[0].FileName != "receipt-1.png" || parser.input.Files[1].FileName != "receipt-2.png" {
+		t.Fatalf("unexpected file order %+v", parser.input.Files)
+	}
+}
+
 func TestRecoverStaleProcessingJobsRequeuesOldLocks(t *testing.T) {
 	ctx := context.Background()
 	receiptRepo := newFakeReceiptRepo()
@@ -183,7 +260,9 @@ func TestApproveParseDeletesStoredFilesAfterSuccess(t *testing.T) {
 	receiptRepo.expenseRepo = expenseRepo
 	fileStore := newMemoryReceiptFileStore()
 	storageKey := testJobID + "/file-1"
+	storageKey2 := testJobID + "/file-2"
 	fileStore.files[storageKey] = []byte("receipt-bytes")
+	fileStore.files[storageKey2] = []byte("receipt-bytes-2")
 	receiptRepo.jobs[testJobID] = &Job{
 		ID:       testJobID,
 		FamilyID: testFamilyID,
@@ -193,7 +272,13 @@ func TestApproveParseDeletesStoredFilesAfterSuccess(t *testing.T) {
 	receiptRepo.files[testJobID] = []File{{
 		ID:         "file-1",
 		JobID:      testJobID,
+		Ordinal:    0,
 		StorageKey: &storageKey,
+	}, {
+		ID:         "file-2",
+		JobID:      testJobID,
+		Ordinal:    1,
+		StorageKey: &storageKey2,
 	}}
 	receiptRepo.items[testJobID] = []Item{{
 		ID:              "item-1",
@@ -241,8 +326,8 @@ func TestApproveParseDeletesStoredFilesAfterSuccess(t *testing.T) {
 	if len(created) != 1 {
 		t.Fatalf("expected 1 created expense, got %d", len(created))
 	}
-	if _, ok := fileStore.files[storageKey]; ok {
-		t.Fatal("expected stored receipt file to be deleted after approve")
+	if len(fileStore.files) != 0 {
+		t.Fatalf("expected stored receipt files to be deleted after approve, got %+v", fileStore.files)
 	}
 }
 

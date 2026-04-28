@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ const (
 	defaultHintMaterializerRetryDelay       = time.Minute
 	defaultHintMaterializerConfidenceCutoff = 0.7
 	defaultFileStoreRoot                    = "data/receipt-parses"
+	maxReceiptFiles                         = 5
 )
 
 type Parser interface {
@@ -122,7 +124,8 @@ func (s *Service) CreateParse(ctx context.Context, input CreateParseInput) (*Job
 	if s.parser == nil {
 		return nil, ErrReceiptParserDisabled
 	}
-	if err := validateUploadedFile(input.File); err != nil {
+	uploadedFiles := createParseFiles(input)
+	if err := validateUploadedFiles(uploadedFiles); err != nil {
 		return nil, err
 	}
 
@@ -143,14 +146,6 @@ func (s *Service) CreateParse(ctx context.Context, input CreateParseInput) (*Job
 	}
 
 	jobID, err := newUUID()
-	if err != nil {
-		return nil, err
-	}
-	fileID, err := newUUID()
-	if err != nil {
-		return nil, err
-	}
-	storageKey, err := s.fileStore.Save(ctx, jobID, fileID, input.File)
 	if err != nil {
 		return nil, err
 	}
@@ -175,26 +170,55 @@ func (s *Service) CreateParse(ctx context.Context, input CreateParseInput) (*Job
 		RequestedDate:       input.RequestedDate,
 		RequestedCurrency:   requestedCurrency,
 	}
-	file := &File{
-		ID:          fileID,
-		JobID:       jobID,
-		Ordinal:     0,
-		FileName:    input.File.FileName,
-		ContentType: input.File.ContentType,
-		SizeBytes:   input.File.SizeBytes,
-		StorageKey:  &storageKey,
-		SHA256:      stringPtr(input.File.SHA256),
+
+	storedFiles := make([]*File, 0, len(uploadedFiles))
+	storageKeys := make([]string, 0, len(uploadedFiles))
+	cleanupSavedFiles := true
+	defer func() {
+		if !cleanupSavedFiles {
+			return
+		}
+		for _, storageKey := range storageKeys {
+			_ = s.fileStore.Delete(ctx, storageKey)
+		}
+	}()
+	for ordinal, uploadedFile := range uploadedFiles {
+		fileID, err := newUUID()
+		if err != nil {
+			return nil, err
+		}
+		storageKey, err := s.fileStore.Save(ctx, jobID, fileID, uploadedFile)
+		if err != nil {
+			return nil, err
+		}
+		storageKeys = append(storageKeys, storageKey)
+		storedFiles = append(storedFiles, &File{
+			ID:          fileID,
+			JobID:       jobID,
+			Ordinal:     ordinal,
+			FileName:    uploadedFile.FileName,
+			ContentType: uploadedFile.ContentType,
+			SizeBytes:   uploadedFile.SizeBytes,
+			StorageKey:  &storageKey,
+			SHA256:      stringPtr(uploadedFile.SHA256),
+		})
 	}
 
 	err = s.repo.Transaction(ctx, func(tx Repository, _ expensesdomain.Repository) error {
 		if err := tx.CreateJob(ctx, job); err != nil {
 			return err
 		}
-		return tx.CreateFile(ctx, file)
+		for _, file := range storedFiles {
+			if err := tx.CreateFile(ctx, file); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	cleanupSavedFiles = false
 
 	s.wakeWorker()
 
@@ -525,14 +549,15 @@ func (s *Service) processJob(ctx context.Context, job *Job) {
 		return
 	}
 
-	file, err := s.loadJobFile(ctx, job.ID)
+	files, err := s.loadJobFiles(ctx, job.ID)
 	if err != nil {
 		s.markFailed(ctx, job, "receipt_file_unavailable", "receipt file is unavailable")
 		return
 	}
 
 	parsed, parseErr := s.parser.ParseReceipt(ctx, ParseReceiptInput{
-		File:        file,
+		Files:       files,
+		File:        files[0],
 		Categories:  categories,
 		Date:        job.RequestedDate,
 		Currency:    stringValue(job.RequestedCurrency),
@@ -615,26 +640,36 @@ func (s *Service) categoriesForJob(ctx context.Context, job *Job) ([]Category, e
 	return categories, err
 }
 
-func (s *Service) loadJobFile(ctx context.Context, jobID string) (UploadedFile, error) {
+func (s *Service) loadJobFiles(ctx context.Context, jobID string) ([]UploadedFile, error) {
 	files, err := s.repo.ListFilesByJobID(ctx, jobID)
 	if err != nil {
-		return UploadedFile{}, err
+		return nil, err
 	}
-	if len(files) == 0 || files[0].StorageKey == nil || strings.TrimSpace(*files[0].StorageKey) == "" {
-		return UploadedFile{}, ErrInvalidReceiptFile
+	if len(files) == 0 {
+		return nil, ErrInvalidReceiptFile
 	}
-	data, err := s.fileStore.Load(ctx, *files[0].StorageKey)
-	if err != nil {
-		return UploadedFile{}, err
+	sort.SliceStable(files, func(i, j int) bool {
+		return files[i].Ordinal < files[j].Ordinal
+	})
+
+	uploadedFiles := make([]UploadedFile, 0, len(files))
+	for _, file := range files {
+		if file.StorageKey == nil || strings.TrimSpace(*file.StorageKey) == "" {
+			return nil, ErrInvalidReceiptFile
+		}
+		data, err := s.fileStore.Load(ctx, *file.StorageKey)
+		if err != nil {
+			return nil, err
+		}
+		uploadedFiles = append(uploadedFiles, UploadedFile{
+			FileName:    file.FileName,
+			ContentType: file.ContentType,
+			SizeBytes:   int64(len(data)),
+			SHA256:      stringValue(file.SHA256),
+			Data:        data,
+		})
 	}
-	file := files[0]
-	return UploadedFile{
-		FileName:    file.FileName,
-		ContentType: file.ContentType,
-		SizeBytes:   int64(len(data)),
-		SHA256:      stringValue(file.SHA256),
-		Data:        data,
-	}, nil
+	return uploadedFiles, nil
 }
 
 func (s *Service) cleanupStoredFiles(ctx context.Context, jobID string) {
@@ -1074,6 +1109,35 @@ func hasUnresolvedItems(items []Item) bool {
 		}
 	}
 	return false
+}
+
+func createParseFiles(input CreateParseInput) []UploadedFile {
+	if len(input.Files) > 0 {
+		return append([]UploadedFile{}, input.Files...)
+	}
+	return []UploadedFile{input.File}
+}
+
+func parseReceiptFiles(input ParseReceiptInput) []UploadedFile {
+	if len(input.Files) > 0 {
+		return append([]UploadedFile{}, input.Files...)
+	}
+	return []UploadedFile{input.File}
+}
+
+func validateUploadedFiles(files []UploadedFile) error {
+	if len(files) == 0 {
+		return ErrInvalidReceiptFile
+	}
+	if len(files) > maxReceiptFiles {
+		return ErrTooManyReceiptFiles
+	}
+	for _, file := range files {
+		if err := validateUploadedFile(file); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateUploadedFile(file UploadedFile) error {

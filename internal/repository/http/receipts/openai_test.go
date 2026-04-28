@@ -2,6 +2,7 @@ package receipts
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -133,6 +134,61 @@ func TestOpenAIParserBuildRequestPreservesReceiptLanguageInstruction(t *testing.
 	}
 	if !strings.Contains(userText, "Keep item names in the original receipt language") {
 		t.Fatalf("missing user language preservation instruction: %q", userText)
+	}
+}
+
+func TestOpenAIParserBuildRequestIncludesMultipleInputImages(t *testing.T) {
+	parser, err := NewOpenAIParser(OpenAIParserConfig{
+		APIKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new parser: %v", err)
+	}
+
+	raw, err := parser.buildRequest(receiptsdomain.ParseReceiptInput{
+		Files: []receiptsdomain.UploadedFile{
+			{
+				FileName:    "receipt-1.png",
+				ContentType: "image/png",
+				SizeBytes:   int64(len(testPNGBytes)),
+				Data:        testPNGBytes,
+			},
+			{
+				FileName:    "receipt-2.png",
+				ContentType: "image/png",
+				SizeBytes:   int64(len(testPNGBytes)),
+				Data:        append([]byte{}, testPNGBytes...),
+			},
+		},
+		Categories: []receiptsdomain.Category{
+			{ID: "cat-1", Name: "Groceries"},
+		},
+		Currency: "BYN",
+	})
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	var request openAIRequest
+	if err := json.Unmarshal(raw, &request); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	userContent := request.Input[1].Content
+	if !strings.Contains(userContent[0].Text, "ordered parts of the same receipt") {
+		t.Fatalf("missing multi-image instruction: %q", userContent[0].Text)
+	}
+	var images []openAIInputPart
+	for _, part := range userContent {
+		if part.Type == "input_image" {
+			images = append(images, part)
+		}
+	}
+	if len(images) != 2 {
+		t.Fatalf("expected two input images, got %+v", userContent)
+	}
+	expectedURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(testPNGBytes)
+	if images[0].ImageURL != expectedURL || images[1].ImageURL != expectedURL {
+		t.Fatalf("unexpected image urls %+v", images)
 	}
 }
 

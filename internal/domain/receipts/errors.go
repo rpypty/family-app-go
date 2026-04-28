@@ -9,6 +9,7 @@ var (
 	ErrReceiptParseInvalidStatus   = errors.New("receipt parse invalid status")
 	ErrInvalidReceiptFile          = errors.New("invalid receipt file")
 	ErrReceiptFileTooLarge         = errors.New("receipt file too large")
+	ErrTooManyReceiptFiles         = errors.New("too many receipt files")
 	ErrCategorySelectionRequired   = errors.New("category selection required")
 	ErrCategoryNotFound            = errors.New("category not found")
 	ErrReceiptParseEmpty           = errors.New("receipt parse empty")
