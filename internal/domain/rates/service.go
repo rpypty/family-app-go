@@ -72,7 +72,7 @@ func (s *Service) ListCurrencies(ctx context.Context) ([]Currency, error) {
 
 	// Ensure base currency is always available.
 	if !hasCurrency(currencies, "BYN") {
-		currencies = append([]Currency{{Code: "BYN", Name: "Belarusian Ruble", Icon: "🇧🇾"}}, currencies...)
+		currencies = append([]Currency{{Code: "BYN", Name: "Belarusian Ruble", Icon: "🇧🇾", Symbol: "ƃ"}}, currencies...)
 	}
 
 	s.currenciesMu.Lock()

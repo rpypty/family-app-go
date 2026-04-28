@@ -88,4 +88,9 @@ func TestListCurrenciesAddsBYN(t *testing.T) {
 	if currencies[0].Code != "BYN" && currencies[1].Code != "BYN" {
 		t.Fatalf("expected BYN in list, got %+v", currencies)
 	}
+	for _, currency := range currencies {
+		if currency.Code == "BYN" && currency.Symbol != "ƃ" {
+			t.Fatalf("expected BYN symbol ƃ, got %+v", currency)
+		}
+	}
 }

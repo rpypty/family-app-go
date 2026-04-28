@@ -12,9 +12,10 @@ var (
 )
 
 type Currency struct {
-	Code string `json:"code"`
-	Name string `json:"name"`
-	Icon string `json:"icon"`
+	Code   string `json:"code"`
+	Name   string `json:"name"`
+	Icon   string `json:"icon"`
+	Symbol string `json:"symbol"`
 }
 
 type Quote struct {

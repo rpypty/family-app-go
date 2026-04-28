@@ -46,7 +46,7 @@ type e2eRatesProvider struct{}
 
 func (e2eRatesProvider) ListCurrencies(_ context.Context) ([]ratesdomain.Currency, error) {
 	return []ratesdomain.Currency{
-		{Code: "BYN", Name: "Belarusian Ruble", Icon: "🇧🇾"},
+		{Code: "BYN", Name: "Belarusian Ruble", Icon: "🇧🇾", Symbol: "ƃ"},
 		{Code: "USD", Name: "US Dollar", Icon: "🇺🇸"},
 		{Code: "EUR", Name: "Euro", Icon: "🇪🇺"},
 		{Code: "RUB", Name: "Russian Ruble", Icon: "🇷🇺"},
