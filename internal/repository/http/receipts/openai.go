@@ -129,6 +129,16 @@ func (p *OpenAIParser) ParseReceipt(ctx context.Context, input receiptsdomain.Pa
 }
 
 func (p *OpenAIParser) buildRequest(input receiptsdomain.ParseReceiptInput) ([]byte, error) {
+	files := parseReceiptFiles(input)
+	if len(files) == 0 {
+		return nil, receiptsdomain.ErrInvalidReceiptFile
+	}
+	for _, file := range files {
+		if strings.TrimSpace(file.ContentType) == "" || len(file.Data) == 0 {
+			return nil, receiptsdomain.ErrInvalidReceiptFile
+		}
+	}
+
 	categoryLines := make([]string, 0, len(input.Categories))
 	categoryIDs := make([]string, 0, len(input.Categories))
 	for _, category := range input.Categories {
@@ -143,7 +153,7 @@ func (p *OpenAIParser) buildRequest(input receiptsdomain.ParseReceiptInput) ([]b
 	requestedCurrency := strings.ToUpper(strings.TrimSpace(input.Currency))
 
 	systemPrompt := strings.Join([]string{
-		"You parse a single retail receipt image into expense line items.",
+		"You parse retail receipt images into expense line items.",
 		"Return only JSON that matches the provided schema.",
 		"Each item must use one of the allowed category IDs.",
 		"Amounts must be positive decimal numbers in receipt currency.",
@@ -154,7 +164,7 @@ func (p *OpenAIParser) buildRequest(input receiptsdomain.ParseReceiptInput) ([]b
 
 	userPromptParts := []string{
 		fmt.Sprintf(
-			"Parse this receipt image.\nAllowed categories:\n%s\nRequested date: %s\nRequested currency: %s\nKeep item names in the original receipt language.\nUse the category IDs exactly as listed.",
+			"Parse the attached receipt image or ordered receipt image parts.\nThe attached images are ordered parts of the same receipt.\nParse them as one receipt.\nIf parts overlap, avoid duplicate line items.\nAllowed categories:\n%s\nRequested date: %s\nRequested currency: %s\nKeep item names in the original receipt language.\nUse the category IDs exactly as listed.",
 			strings.Join(categoryLines, "\n"),
 			emptyAsUnknown(requestedDate),
 			emptyAsUnknown(requestedCurrency),
@@ -164,6 +174,14 @@ func (p *OpenAIParser) buildRequest(input receiptsdomain.ParseReceiptInput) ([]b
 		userPromptParts = append(userPromptParts, hintsBlock)
 	}
 	userPrompt := strings.Join(userPromptParts, "\n\n")
+
+	userContent := []openAIInputPart{{Type: "input_text", Text: userPrompt}}
+	for _, file := range files {
+		userContent = append(userContent, openAIInputPart{
+			Type:     "input_image",
+			ImageURL: "data:" + file.ContentType + ";base64," + base64.StdEncoding.EncodeToString(file.Data),
+		})
+	}
 
 	payload := openAIRequest{
 		Model: p.model,
@@ -175,14 +193,8 @@ func (p *OpenAIParser) buildRequest(input receiptsdomain.ParseReceiptInput) ([]b
 				},
 			},
 			{
-				Role: "user",
-				Content: []openAIInputPart{
-					{Type: "input_text", Text: userPrompt},
-					{
-						Type:     "input_image",
-						ImageURL: "data:" + input.File.ContentType + ";base64," + base64.StdEncoding.EncodeToString(input.File.Data),
-					},
-				},
+				Role:    "user",
+				Content: userContent,
 			},
 		},
 		Text: openAITextConfig{
@@ -201,6 +213,13 @@ func (p *OpenAIParser) buildRequest(input receiptsdomain.ParseReceiptInput) ([]b
 		return nil, fmt.Errorf("%w: marshal request: %v", receiptsdomain.ErrLLMRequestFailed, err)
 	}
 	return raw, nil
+}
+
+func parseReceiptFiles(input receiptsdomain.ParseReceiptInput) []receiptsdomain.UploadedFile {
+	if len(input.Files) > 0 {
+		return append([]receiptsdomain.UploadedFile{}, input.Files...)
+	}
+	return []receiptsdomain.UploadedFile{input.File}
 }
 
 func (p *OpenAIParser) resolveURL(path string) (string, error) {

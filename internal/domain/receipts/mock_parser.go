@@ -16,6 +16,10 @@ func (p *MockParser) ParseReceipt(_ context.Context, input ParseReceiptInput) (*
 	if len(input.Categories) == 0 {
 		return nil, ErrCategorySelectionRequired
 	}
+	files := parseReceiptFiles(input)
+	if err := validateUploadedFiles(files); err != nil {
+		return nil, err
+	}
 
 	category := input.Categories[0]
 	confidence := 0.7
@@ -32,8 +36,9 @@ func (p *MockParser) ParseReceipt(_ context.Context, input ParseReceiptInput) (*
 		currency = "BYN"
 	}
 	raw, _ := json.Marshal(map[string]any{
-		"mock": true,
-		"file": input.File.FileName,
+		"mock":  true,
+		"files": len(files),
+		"file":  files[0].FileName,
 	})
 
 	return &ParsedReceipt{

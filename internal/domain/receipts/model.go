@@ -231,6 +231,7 @@ type CreateParseInput struct {
 	SelectedCategoryIDs []string
 	RequestedDate       *time.Time
 	RequestedCurrency   string
+	Files               []UploadedFile
 	File                UploadedFile
 }
 
@@ -264,6 +265,7 @@ type UpdateItemsInput struct {
 }
 
 type ParseReceiptInput struct {
+	Files       []UploadedFile
 	File        UploadedFile
 	Categories  []Category
 	Date        *time.Time
