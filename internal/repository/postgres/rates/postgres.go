@@ -26,14 +26,15 @@ func NewPostgresProvider(db *gorm.DB, rateProvider RateProvider) *PostgresProvid
 
 func (p *PostgresProvider) ListCurrencies(ctx context.Context) ([]ratesdomain.Currency, error) {
 	var rows []struct {
-		Code string `gorm:"column:code"`
-		Name string `gorm:"column:name"`
-		Icon string `gorm:"column:icon"`
+		Code   string `gorm:"column:code"`
+		Name   string `gorm:"column:name"`
+		Icon   string `gorm:"column:icon"`
+		Symbol string `gorm:"column:symbol"`
 	}
 
 	if err := p.db.WithContext(ctx).
 		Table("currencies").
-		Select("code, name, icon").
+		Select("code, name, icon, symbol").
 		Where("is_active = ?", true).
 		Order("sort_order asc, code asc").
 		Scan(&rows).Error; err != nil {
@@ -43,9 +44,10 @@ func (p *PostgresProvider) ListCurrencies(ctx context.Context) ([]ratesdomain.Cu
 	result := make([]ratesdomain.Currency, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, ratesdomain.Currency{
-			Code: row.Code,
-			Name: row.Name,
-			Icon: row.Icon,
+			Code:   row.Code,
+			Name:   row.Name,
+			Icon:   row.Icon,
+			Symbol: row.Symbol,
 		})
 	}
 

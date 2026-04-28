@@ -9,9 +9,10 @@ import (
 )
 
 type currencyResponse struct {
-	Code string `json:"code"`
-	Name string `json:"name"`
-	Icon string `json:"icon"`
+	Code   string `json:"code"`
+	Name   string `json:"name"`
+	Icon   string `json:"icon"`
+	Symbol string `json:"symbol"`
 }
 
 type exchangeRateResponse struct {
@@ -33,9 +34,10 @@ func (h *Handlers) ListCurrencies(w http.ResponseWriter, r *http.Request) {
 	response := make([]currencyResponse, 0, len(currencies))
 	for _, currency := range currencies {
 		response = append(response, currencyResponse{
-			Code: currency.Code,
-			Name: currency.Name,
-			Icon: currency.Icon,
+			Code:   currency.Code,
+			Name:   currency.Name,
+			Icon:   currency.Icon,
+			Symbol: currency.Symbol,
 		})
 	}
 

@@ -1865,7 +1865,7 @@ components:
             type: string
     Currency:
       type: object
-      required: [code, name, icon]
+      required: [code, name, icon, symbol]
       properties:
         code:
           type: string
@@ -1874,6 +1874,8 @@ components:
         name:
           type: string
         icon:
+          type: string
+        symbol:
           type: string
     ExchangeRate:
       type: object
