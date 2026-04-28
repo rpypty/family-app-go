@@ -42,3 +42,27 @@ func buildReceiptParser(cfg config.ReceiptParserConfig, log logger.Logger) (rece
 	log.Info("app: using openai receipt parser", "model", cfg.OpenAIModel)
 	return parser, nil
 }
+
+func buildReceiptHintNormalizer(cfg config.ReceiptParserConfig, log logger.Logger) (receiptsdomain.HintNormalizer, error) {
+	if !cfg.HintNormalizerEnabled {
+		log.Info("app: receipt hint normalizer disabled, using deterministic fallback")
+		return nil, nil
+	}
+	if strings.TrimSpace(cfg.OpenAIAPIKey) == "" {
+		log.Warn("app: openai api key is empty, using deterministic receipt hint fallback")
+		return nil, nil
+	}
+
+	normalizer, err := receiptshttp.NewOpenAIHintNormalizer(receiptshttp.OpenAIHintNormalizerConfig{
+		APIKey:  cfg.OpenAIAPIKey,
+		Model:   cfg.HintNormalizerModel,
+		BaseURL: cfg.OpenAIBaseURL,
+		Timeout: cfg.OpenAITimeout,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	log.Info("app: using openai receipt hint normalizer", "model", cfg.HintNormalizerModel)
+	return normalizer, nil
+}

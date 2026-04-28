@@ -3,6 +3,7 @@ package receipts
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ const (
 	testJobID      = "33333333-3333-3333-3333-333333333333"
 	testDraftID    = "44444444-4444-4444-4444-444444444444"
 	testCategoryID = "55555555-5555-5555-5555-555555555555"
+	testSportID    = "66666666-6666-6666-6666-666666666666"
 )
 
 var errUpdateJobFailed = errors.New("update job failed")
@@ -244,6 +246,280 @@ func TestApproveParseDeletesStoredFilesAfterSuccess(t *testing.T) {
 	}
 }
 
+func TestApproveParseCreatesCorrectionEventForChangedCategory(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo, service := newReadyApproveServiceWithItem(Item{
+		ID:                    "item-1",
+		JobID:                 testJobID,
+		RawName:               "Exponenta cocktail",
+		NormalizedName:        stringPtr("Exponenta cocktail"),
+		LineTotal:             10,
+		FinalLineTotal:        floatPtr(10),
+		LLMCategoryID:         stringPtr(testCategoryID),
+		FinalCategoryID:       stringPtr(testSportID),
+		LLMCategoryConfidence: floatPtr(0.6),
+	})
+	date := time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC)
+
+	_, err := service.ApproveParse(ctx, ApproveInput{
+		FamilyID:     testFamilyID,
+		UserID:       testUserID,
+		BaseCurrency: "BYN",
+		JobID:        testJobID,
+		Expenses: []ApproveExpenseInput{{
+			DraftID:     testDraftID,
+			Date:        date,
+			Title:       "Sport",
+			Amount:      10,
+			Currency:    "BYN",
+			CategoryIDs: []string{testSportID},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("approve parse: %v", err)
+	}
+	if len(receiptRepo.correctionEvents) != 1 {
+		t.Fatalf("expected 1 correction event, got %d", len(receiptRepo.correctionEvents))
+	}
+	event := receiptRepo.correctionEvents[0]
+	if event.SourceItemText != "Exponenta cocktail" || event.NormalizedItemText != "Exponenta cocktail" {
+		t.Fatalf("unexpected event text %+v", event)
+	}
+	if event.LLMCategoryID == nil || *event.LLMCategoryID != testCategoryID || event.FinalCategoryID != testSportID {
+		t.Fatalf("unexpected event categories %+v", event)
+	}
+	if len(receiptRepo.hints) != 0 {
+		t.Fatalf("expected approve to defer hint materialization, got %+v", receiptRepo.hints)
+	}
+	if len(receiptRepo.hintExamples) != 0 {
+		t.Fatalf("expected approve to defer hint examples, got %d", len(receiptRepo.hintExamples))
+	}
+}
+
+func TestApproveParseCreatesCorrectionEventForManuallyCategorizedUnresolvedItem(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo, service := newReadyApproveServiceWithItem(Item{
+		ID:              "item-1",
+		JobID:           testJobID,
+		RawName:         "Bombbar",
+		LineTotal:       10,
+		FinalLineTotal:  floatPtr(10),
+		FinalCategoryID: stringPtr(testSportID),
+	})
+	date := time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC)
+
+	_, err := service.ApproveParse(ctx, ApproveInput{
+		FamilyID:     testFamilyID,
+		UserID:       testUserID,
+		BaseCurrency: "BYN",
+		JobID:        testJobID,
+		Expenses: []ApproveExpenseInput{{
+			DraftID:     testDraftID,
+			Date:        date,
+			Title:       "Sport",
+			Amount:      10,
+			Currency:    "BYN",
+			CategoryIDs: []string{testSportID},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("approve parse: %v", err)
+	}
+	if len(receiptRepo.correctionEvents) != 1 {
+		t.Fatalf("expected correction event, got %d", len(receiptRepo.correctionEvents))
+	}
+	if receiptRepo.correctionEvents[0].LLMCategoryID != nil {
+		t.Fatalf("expected nil LLM category, got %+v", receiptRepo.correctionEvents[0].LLMCategoryID)
+	}
+	if receiptRepo.correctionEvents[0].NormalizedItemText != "Bombbar" {
+		t.Fatalf("expected raw name fallback, got %+v", receiptRepo.correctionEvents[0])
+	}
+}
+
+func TestApproveParseSkipsCorrectionEventWhenCategoryUnchanged(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo, service := newReadyApproveServiceWithItem(Item{
+		ID:              "item-1",
+		JobID:           testJobID,
+		RawName:         "Milk",
+		LineTotal:       10,
+		FinalLineTotal:  floatPtr(10),
+		LLMCategoryID:   stringPtr(testCategoryID),
+		FinalCategoryID: stringPtr(testCategoryID),
+	})
+	date := time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC)
+
+	_, err := service.ApproveParse(ctx, ApproveInput{
+		FamilyID:     testFamilyID,
+		UserID:       testUserID,
+		BaseCurrency: "BYN",
+		JobID:        testJobID,
+		Expenses: []ApproveExpenseInput{{
+			DraftID:     testDraftID,
+			Date:        date,
+			Title:       "Products",
+			Amount:      10,
+			Currency:    "BYN",
+			CategoryIDs: []string{testCategoryID},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("approve parse: %v", err)
+	}
+	if len(receiptRepo.correctionEvents) != 0 {
+		t.Fatalf("expected no correction events, got %+v", receiptRepo.correctionEvents)
+	}
+}
+
+func TestMaterializeNextCategoryCorrectionMatchesExistingHintAndIncrementsCount(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo := newFakeReceiptRepo()
+	receiptRepo.expenseRepo = newFakeReceiptExpenseRepo()
+	receiptRepo.correctionEvents = []CategoryCorrectionEvent{{
+		ID:                 "event-1",
+		FamilyID:           testFamilyID,
+		UserID:             testUserID,
+		ReceiptParseJobID:  testJobID,
+		ReceiptParseItemID: "item-1",
+		SourceItemText:     "Exponenta strawberry",
+		NormalizedItemText: "Exponenta strawberry",
+		LLMCategoryID:      stringPtr(testCategoryID),
+		FinalCategoryID:    testSportID,
+		CreatedAt:          time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC),
+	}}
+	receiptRepo.hints = []FamilyHint{{
+		ID:              "hint-1",
+		FamilyID:        testFamilyID,
+		CanonicalName:   "Exponenta cocktail",
+		FinalCategoryID: testSportID,
+		TimesConfirmed:  1,
+		LastConfirmedAt: time.Date(2026, 4, 24, 0, 0, 0, 0, time.UTC),
+	}}
+	normalizer := &fakeHintNormalizer{
+		result: &NormalizeCategoryCorrectionResult{
+			Action:     NormalizeActionMatchExisting,
+			HintID:     stringPtr("hint-1"),
+			Confidence: 0.95,
+		},
+	}
+	service := NewServiceWithOptions(receiptRepo, nil, fakeCategoryProvider{
+		categories: []expensesdomain.Category{
+			{ID: testCategoryID, FamilyID: testFamilyID, Name: "Products"},
+			{ID: testSportID, FamilyID: testFamilyID, Name: "Sport"},
+		},
+	}, fakeExpenseBatchCreator{}, ServiceOptions{
+		HintNormalizer: normalizer,
+		WorkerEnabled:  false,
+	})
+
+	processed, err := service.MaterializeNextCategoryCorrection(ctx)
+	if err != nil {
+		t.Fatalf("materialize correction: %v", err)
+	}
+	if !processed {
+		t.Fatal("expected correction event to be processed")
+	}
+	if len(receiptRepo.hints) != 1 || receiptRepo.hints[0].TimesConfirmed != 2 {
+		t.Fatalf("expected existing hint count to increment, got %+v", receiptRepo.hints)
+	}
+	if len(receiptRepo.hintExamples) != 1 || receiptRepo.hintExamples[0].HintID != "hint-1" {
+		t.Fatalf("expected hint example for matched hint, got %+v", receiptRepo.hintExamples)
+	}
+	if receiptRepo.correctionEvents[0].ProcessedAt == nil {
+		t.Fatalf("expected event to be marked processed, got %+v", receiptRepo.correctionEvents[0])
+	}
+}
+
+func TestMaterializeNextCategoryCorrectionCreatesNewHintFromLLMCanonicalName(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo, service := newMaterializerServiceWithEvent(&fakeHintNormalizer{
+		result: &NormalizeCategoryCorrectionResult{
+			Action:        NormalizeActionCreateNew,
+			CanonicalName: "Exponenta cocktail",
+			Confidence:    0.92,
+		},
+	})
+
+	processed, err := service.MaterializeNextCategoryCorrection(ctx)
+	if err != nil {
+		t.Fatalf("materialize correction: %v", err)
+	}
+	if !processed {
+		t.Fatal("expected correction event to be processed")
+	}
+	if len(receiptRepo.hints) != 1 || receiptRepo.hints[0].CanonicalName != "Exponenta cocktail" {
+		t.Fatalf("expected LLM canonical hint, got %+v", receiptRepo.hints)
+	}
+	if receiptRepo.correctionEvents[0].ProcessedAt == nil {
+		t.Fatalf("expected event processed, got %+v", receiptRepo.correctionEvents[0])
+	}
+}
+
+func TestMaterializeNextCategoryCorrectionFallsBackOnLowConfidence(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo, service := newMaterializerServiceWithEvent(&fakeHintNormalizer{
+		result: &NormalizeCategoryCorrectionResult{
+			Action:        NormalizeActionCreateNew,
+			CanonicalName: "Protein cocktail",
+			Confidence:    0.3,
+		},
+	})
+
+	processed, err := service.MaterializeNextCategoryCorrection(ctx)
+	if err != nil {
+		t.Fatalf("materialize correction: %v", err)
+	}
+	if !processed {
+		t.Fatal("expected correction event to be processed")
+	}
+	if len(receiptRepo.hints) != 1 || receiptRepo.hints[0].CanonicalName != "EXPONENTA 30g" {
+		t.Fatalf("expected deterministic fallback hint, got %+v", receiptRepo.hints)
+	}
+}
+
+func TestMaterializeNextCategoryCorrectionRetriesNormalizerError(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo, service := newMaterializerServiceWithEvent(&fakeHintNormalizer{err: errors.New("boom")})
+
+	processed, err := service.MaterializeNextCategoryCorrection(ctx)
+	if err != nil {
+		t.Fatalf("materialize correction: %v", err)
+	}
+	if !processed {
+		t.Fatal("expected correction event to be acquired")
+	}
+	event := receiptRepo.correctionEvents[0]
+	if event.ProcessedAt != nil {
+		t.Fatalf("expected event to remain unprocessed, got %+v", event)
+	}
+	if event.NextMaterializeAttemptAt == nil || event.MaterializeErrorCode == nil || *event.MaterializeErrorCode != "normalizer_failed" {
+		t.Fatalf("expected retry metadata, got %+v", event)
+	}
+	if len(receiptRepo.hints) != 0 {
+		t.Fatalf("expected no hint before retry succeeds, got %+v", receiptRepo.hints)
+	}
+}
+
+func TestMaterializeNextCategoryCorrectionFallsBackAfterMaxAttempts(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo, service := newMaterializerServiceWithEvent(&fakeHintNormalizer{err: errors.New("boom")})
+	receiptRepo.correctionEvents[0].MaterializeAttemptCount = defaultHintMaterializerMaxAttempts - 1
+
+	processed, err := service.MaterializeNextCategoryCorrection(ctx)
+	if err != nil {
+		t.Fatalf("materialize correction: %v", err)
+	}
+	if !processed {
+		t.Fatal("expected correction event to be acquired")
+	}
+	if len(receiptRepo.hints) != 1 || receiptRepo.hints[0].CanonicalName != "EXPONENTA 30g" {
+		t.Fatalf("expected deterministic fallback after max attempts, got %+v", receiptRepo.hints)
+	}
+	if receiptRepo.correctionEvents[0].ProcessedAt == nil {
+		t.Fatalf("expected event processed after fallback, got %+v", receiptRepo.correctionEvents[0])
+	}
+}
+
 func TestCancelParseDeletesStoredFilesAfterSuccess(t *testing.T) {
 	ctx := context.Background()
 	receiptRepo := newFakeReceiptRepo()
@@ -396,6 +672,79 @@ func TestProcessNextKeepsUnresolvedItemsAndReadyStatus(t *testing.T) {
 	}
 }
 
+func TestProcessNextPassesTopAllowedHintsToParser(t *testing.T) {
+	ctx := context.Background()
+	receiptRepo := newFakeReceiptRepo()
+	receiptRepo.expenseRepo = newFakeReceiptExpenseRepo()
+	fileStore := newMemoryReceiptFileStore()
+	parser := &captureParser{}
+	now := time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC)
+	receiptRepo.hints = []FamilyHint{
+		{
+			ID:              "hint-allowed",
+			FamilyID:        testFamilyID,
+			CanonicalName:   "Exponenta cocktail",
+			FinalCategoryID: testSportID,
+			TimesConfirmed:  3,
+			LastConfirmedAt: now,
+		},
+		{
+			ID:              "hint-filtered",
+			FamilyID:        testFamilyID,
+			CanonicalName:   "Taxi",
+			FinalCategoryID: "77777777-7777-7777-7777-777777777777",
+			TimesConfirmed:  10,
+			LastConfirmedAt: now,
+		},
+	}
+	service := NewServiceWithOptions(receiptRepo, parser, fakeCategoryProvider{
+		categories: []expensesdomain.Category{
+			{ID: testCategoryID, FamilyID: testFamilyID, Name: "Products"},
+			{ID: testSportID, FamilyID: testFamilyID, Name: "Sport"},
+		},
+	}, fakeExpenseBatchCreator{}, ServiceOptions{
+		FileStore:     fileStore,
+		WorkerEnabled: false,
+		WorkerID:      "test-worker",
+	})
+
+	job, err := service.CreateParse(ctx, CreateParseInput{
+		FamilyID:            testFamilyID,
+		UserID:              testUserID,
+		CategoryMode:        CategoryModeSelected,
+		SelectedCategoryIDs: []string{testCategoryID, testSportID},
+		RequestedCurrency:   "BYN",
+		File: UploadedFile{
+			FileName:    "receipt.png",
+			ContentType: "image/png",
+			SizeBytes:   int64(len(validPNGBytes)),
+			SHA256:      "sha",
+			Data:        validPNGBytes,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create parse: %v", err)
+	}
+
+	processed, err := service.ProcessNext(ctx)
+	if err != nil {
+		t.Fatalf("process next: %v", err)
+	}
+	if !processed {
+		t.Fatal("expected queued job to be processed")
+	}
+	if parser.input.File.FileName == "" || job.ID == "" {
+		t.Fatalf("expected parser to receive input for job %s", job.ID)
+	}
+	if len(parser.input.Corrections) != 1 {
+		t.Fatalf("expected one allowed correction hint, got %+v", parser.input.Corrections)
+	}
+	hint := parser.input.Corrections[0]
+	if hint.CanonicalName != "Exponenta cocktail" || hint.CategoryID != testSportID || hint.CategoryName != "Sport" || hint.TimesConfirmed != 3 {
+		t.Fatalf("unexpected correction hint %+v", hint)
+	}
+}
+
 func TestUpdateItemsRebuildsDraftsAndResolvesUncategorizedItem(t *testing.T) {
 	ctx := context.Background()
 	receiptRepo := newFakeReceiptRepo()
@@ -525,6 +874,43 @@ func (fakeParser) ParseReceipt(_ context.Context, input ParseReceiptInput) (*Par
 	}, nil
 }
 
+type captureParser struct {
+	input ParseReceiptInput
+}
+
+func (p *captureParser) ParseReceipt(_ context.Context, input ParseReceiptInput) (*ParsedReceipt, error) {
+	p.input = input
+	categoryID := input.Categories[0].ID
+	total := 10.0
+	return &ParsedReceipt{
+		Currency:    "BYN",
+		Provider:    "fake",
+		Model:       "fake",
+		RawResponse: []byte(`{"fake":true}`),
+		Items: []ParsedItem{
+			{
+				RawName:    "Receipt item",
+				LineTotal:  total,
+				CategoryID: &categoryID,
+			},
+		},
+	}, nil
+}
+
+type fakeHintNormalizer struct {
+	result *NormalizeCategoryCorrectionResult
+	err    error
+	input  NormalizeCategoryCorrectionInput
+}
+
+func (n *fakeHintNormalizer) NormalizeCategoryCorrection(_ context.Context, input NormalizeCategoryCorrectionInput) (*NormalizeCategoryCorrectionResult, error) {
+	n.input = input
+	if n.err != nil {
+		return nil, n.err
+	}
+	return n.result, nil
+}
+
 type invalidResponseParser struct{}
 
 func (invalidResponseParser) ParseReceipt(context.Context, ParseReceiptInput) (*ParsedReceipt, error) {
@@ -555,6 +941,61 @@ func (mixedCategoryParser) ParseReceipt(_ context.Context, input ParseReceiptInp
 
 func floatPtr(value float64) *float64 {
 	return &value
+}
+
+func newReadyApproveServiceWithItem(item Item) (*fakeReceiptRepo, *Service) {
+	receiptRepo := newFakeReceiptRepo()
+	expenseRepo := newFakeReceiptExpenseRepo()
+	receiptRepo.expenseRepo = expenseRepo
+	receiptRepo.jobs[testJobID] = &Job{
+		ID:       testJobID,
+		FamilyID: testFamilyID,
+		UserID:   testUserID,
+		Status:   StatusReady,
+	}
+	receiptRepo.items[testJobID] = []Item{item}
+	receiptRepo.drafts[testJobID] = []DraftExpense{
+		{
+			ID:         testDraftID,
+			JobID:      testJobID,
+			Title:      "Draft",
+			Amount:     10,
+			Currency:   "BYN",
+			CategoryID: stringValue(item.FinalCategoryID),
+			Warnings:   []byte("[]"),
+		},
+	}
+	service := NewServiceWithOptions(receiptRepo, nil, nil, fakeExpenseBatchCreator{}, ServiceOptions{WorkerEnabled: false})
+	return receiptRepo, service
+}
+
+func newMaterializerServiceWithEvent(normalizer HintNormalizer) (*fakeReceiptRepo, *Service) {
+	receiptRepo := newFakeReceiptRepo()
+	receiptRepo.expenseRepo = newFakeReceiptExpenseRepo()
+	receiptRepo.correctionEvents = []CategoryCorrectionEvent{
+		{
+			ID:                 "event-1",
+			FamilyID:           testFamilyID,
+			UserID:             testUserID,
+			ReceiptParseJobID:  testJobID,
+			ReceiptParseItemID: "item-1",
+			SourceItemText:     "Exponenta raw",
+			NormalizedItemText: "EXPONENTA 30g",
+			LLMCategoryID:      stringPtr(testCategoryID),
+			FinalCategoryID:    testSportID,
+			CreatedAt:          time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC),
+		},
+	}
+	service := NewServiceWithOptions(receiptRepo, nil, fakeCategoryProvider{
+		categories: []expensesdomain.Category{
+			{ID: testCategoryID, FamilyID: testFamilyID, Name: "Products"},
+			{ID: testSportID, FamilyID: testFamilyID, Name: "Sport"},
+		},
+	}, fakeExpenseBatchCreator{}, ServiceOptions{
+		HintNormalizer: normalizer,
+		WorkerEnabled:  false,
+	})
+	return receiptRepo, service
 }
 
 type fakeCategoryProvider struct {
@@ -593,12 +1034,15 @@ func (s *memoryReceiptFileStore) Delete(_ context.Context, storageKey string) er
 }
 
 type fakeReceiptRepo struct {
-	jobs          map[string]*Job
-	files         map[string][]File
-	items         map[string][]Item
-	drafts        map[string][]DraftExpense
-	expenseRepo   *fakeReceiptExpenseRepo
-	failUpdateJob bool
+	jobs             map[string]*Job
+	files            map[string][]File
+	items            map[string][]Item
+	drafts           map[string][]DraftExpense
+	correctionEvents []CategoryCorrectionEvent
+	hints            []FamilyHint
+	hintExamples     []FamilyHintExample
+	expenseRepo      *fakeReceiptExpenseRepo
+	failUpdateJob    bool
 }
 
 func newFakeReceiptRepo() *fakeReceiptRepo {
@@ -612,7 +1056,11 @@ func newFakeReceiptRepo() *fakeReceiptRepo {
 
 func (r *fakeReceiptRepo) Transaction(ctx context.Context, fn func(Repository, expensesdomain.Repository) error) error {
 	tx := r.clone()
-	tx.expenseRepo = r.expenseRepo.clone()
+	if r.expenseRepo != nil {
+		tx.expenseRepo = r.expenseRepo.clone()
+	} else {
+		tx.expenseRepo = newFakeReceiptExpenseRepo()
+	}
 	if err := fn(tx, tx.expenseRepo); err != nil {
 		return err
 	}
@@ -620,8 +1068,13 @@ func (r *fakeReceiptRepo) Transaction(ctx context.Context, fn func(Repository, e
 	r.files = tx.files
 	r.items = tx.items
 	r.drafts = tx.drafts
-	r.expenseRepo.expenses = tx.expenseRepo.expenses
-	r.expenseRepo.expenseCategories = tx.expenseRepo.expenseCategories
+	r.correctionEvents = tx.correctionEvents
+	r.hints = tx.hints
+	r.hintExamples = tx.hintExamples
+	if r.expenseRepo != nil {
+		r.expenseRepo.expenses = tx.expenseRepo.expenses
+		r.expenseRepo.expenseCategories = tx.expenseRepo.expenseCategories
+	}
 	return nil
 }
 
@@ -641,6 +1094,9 @@ func (r *fakeReceiptRepo) clone() *fakeReceiptRepo {
 	for jobID, drafts := range r.drafts {
 		clone.drafts[jobID] = append([]DraftExpense{}, drafts...)
 	}
+	clone.correctionEvents = append([]CategoryCorrectionEvent{}, r.correctionEvents...)
+	clone.hints = append([]FamilyHint{}, r.hints...)
+	clone.hintExamples = append([]FamilyHintExample{}, r.hintExamples...)
 	return clone
 }
 
@@ -754,6 +1210,146 @@ func (r *fakeReceiptRepo) UpdateDraftExpense(_ context.Context, draft *DraftExpe
 		}
 	}
 	return ErrReceiptParseInvalidStatus
+}
+
+func (r *fakeReceiptRepo) CreateCategoryCorrectionEvent(_ context.Context, event *CategoryCorrectionEvent) error {
+	for _, existing := range r.correctionEvents {
+		if existing.ReceiptParseItemID == event.ReceiptParseItemID {
+			return ErrReceiptParseInvalidStatus
+		}
+	}
+	r.correctionEvents = append(r.correctionEvents, *event)
+	return nil
+}
+
+func (r *fakeReceiptRepo) AcquireUnprocessedCategoryCorrectionEvent(_ context.Context, workerID string, now time.Time) (*CategoryCorrectionEvent, error) {
+	for index := range r.correctionEvents {
+		event := &r.correctionEvents[index]
+		if event.ProcessedAt != nil {
+			continue
+		}
+		if event.LockedAt != nil {
+			continue
+		}
+		if event.NextMaterializeAttemptAt != nil && event.NextMaterializeAttemptAt.After(now) {
+			continue
+		}
+		event.MaterializeAttemptCount++
+		event.LastMaterializeAttemptAt = &now
+		event.LockedAt = &now
+		event.LockedBy = &workerID
+		event.MaterializeErrorCode = nil
+		event.MaterializeErrorMessage = nil
+		eventCopy := *event
+		return &eventCopy, nil
+	}
+	return nil, nil
+}
+
+func (r *fakeReceiptRepo) RequeueStaleCategoryCorrections(_ context.Context, staleBefore time.Time) (int64, error) {
+	var count int64
+	for index := range r.correctionEvents {
+		event := &r.correctionEvents[index]
+		if event.ProcessedAt != nil || event.LockedAt == nil || !event.LockedAt.Before(staleBefore) {
+			continue
+		}
+		event.LockedAt = nil
+		event.LockedBy = nil
+		count++
+	}
+	return count, nil
+}
+
+func (r *fakeReceiptRepo) MarkCategoryCorrectionEventProcessed(_ context.Context, eventID string, processedAt time.Time) error {
+	for index := range r.correctionEvents {
+		if r.correctionEvents[index].ID != eventID {
+			continue
+		}
+		r.correctionEvents[index].ProcessedAt = &processedAt
+		r.correctionEvents[index].LockedAt = nil
+		r.correctionEvents[index].LockedBy = nil
+		r.correctionEvents[index].NextMaterializeAttemptAt = nil
+		r.correctionEvents[index].MaterializeErrorCode = nil
+		r.correctionEvents[index].MaterializeErrorMessage = nil
+		return nil
+	}
+	return ErrReceiptParseInvalidStatus
+}
+
+func (r *fakeReceiptRepo) ReleaseCategoryCorrectionEventWithError(_ context.Context, eventID, code, message string, nextAttemptAt *time.Time) error {
+	for index := range r.correctionEvents {
+		if r.correctionEvents[index].ID != eventID {
+			continue
+		}
+		r.correctionEvents[index].LockedAt = nil
+		r.correctionEvents[index].LockedBy = nil
+		r.correctionEvents[index].NextMaterializeAttemptAt = nextAttemptAt
+		r.correctionEvents[index].MaterializeErrorCode = &code
+		r.correctionEvents[index].MaterializeErrorMessage = &message
+		return nil
+	}
+	return ErrReceiptParseInvalidStatus
+}
+
+func (r *fakeReceiptRepo) UpsertFamilyHint(_ context.Context, input UpsertFamilyHintInput) (*FamilyHint, error) {
+	for index := range r.hints {
+		hint := &r.hints[index]
+		if hint.FamilyID == input.FamilyID && hint.CanonicalName == input.CanonicalName && hint.FinalCategoryID == input.FinalCategoryID {
+			hint.TimesConfirmed++
+			hint.LastConfirmedAt = input.ConfirmedAt
+			hint.UpdatedAt = input.ConfirmedAt
+			hintCopy := *hint
+			return &hintCopy, nil
+		}
+	}
+	hint := FamilyHint{
+		ID:              input.ID,
+		FamilyID:        input.FamilyID,
+		CanonicalName:   input.CanonicalName,
+		FinalCategoryID: input.FinalCategoryID,
+		TimesConfirmed:  1,
+		LastConfirmedAt: input.ConfirmedAt,
+		CreatedAt:       input.ConfirmedAt,
+		UpdatedAt:       input.ConfirmedAt,
+	}
+	r.hints = append(r.hints, hint)
+	hintCopy := hint
+	return &hintCopy, nil
+}
+
+func (r *fakeReceiptRepo) CreateFamilyHintExample(_ context.Context, example *FamilyHintExample) error {
+	r.hintExamples = append(r.hintExamples, *example)
+	return nil
+}
+
+func (r *fakeReceiptRepo) ListFamilyHints(_ context.Context, familyID string, categoryIDs []string, limit int) ([]FamilyHint, error) {
+	if limit <= 0 || len(categoryIDs) == 0 {
+		return []FamilyHint{}, nil
+	}
+	allowed := make(map[string]struct{}, len(categoryIDs))
+	for _, categoryID := range categoryIDs {
+		allowed[categoryID] = struct{}{}
+	}
+	result := make([]FamilyHint, 0, len(r.hints))
+	for _, hint := range r.hints {
+		if hint.FamilyID != familyID {
+			continue
+		}
+		if _, ok := allowed[hint.FinalCategoryID]; !ok {
+			continue
+		}
+		result = append(result, hint)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].TimesConfirmed != result[j].TimesConfirmed {
+			return result[i].TimesConfirmed > result[j].TimesConfirmed
+		}
+		return result[i].LastConfirmedAt.After(result[j].LastConfirmedAt)
+	})
+	if len(result) > limit {
+		result = result[:limit]
+	}
+	return append([]FamilyHint{}, result...), nil
 }
 
 func (r *fakeReceiptRepo) UpdateItem(_ context.Context, item *Item) error {

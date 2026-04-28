@@ -547,3 +547,44 @@ func (r *handlerReceiptRepo) UpdateDraftExpense(_ context.Context, draft *receip
 	}
 	return receiptsdomain.ErrReceiptParseInvalidStatus
 }
+
+func (r *handlerReceiptRepo) CreateCategoryCorrectionEvent(context.Context, *receiptsdomain.CategoryCorrectionEvent) error {
+	return nil
+}
+
+func (r *handlerReceiptRepo) AcquireUnprocessedCategoryCorrectionEvent(context.Context, string, time.Time) (*receiptsdomain.CategoryCorrectionEvent, error) {
+	return nil, nil
+}
+
+func (r *handlerReceiptRepo) RequeueStaleCategoryCorrections(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (r *handlerReceiptRepo) MarkCategoryCorrectionEventProcessed(context.Context, string, time.Time) error {
+	return nil
+}
+
+func (r *handlerReceiptRepo) ReleaseCategoryCorrectionEventWithError(context.Context, string, string, string, *time.Time) error {
+	return nil
+}
+
+func (r *handlerReceiptRepo) UpsertFamilyHint(_ context.Context, input receiptsdomain.UpsertFamilyHintInput) (*receiptsdomain.FamilyHint, error) {
+	return &receiptsdomain.FamilyHint{
+		ID:              input.ID,
+		FamilyID:        input.FamilyID,
+		CanonicalName:   input.CanonicalName,
+		FinalCategoryID: input.FinalCategoryID,
+		TimesConfirmed:  1,
+		LastConfirmedAt: input.ConfirmedAt,
+		CreatedAt:       input.ConfirmedAt,
+		UpdatedAt:       input.ConfirmedAt,
+	}, nil
+}
+
+func (r *handlerReceiptRepo) CreateFamilyHintExample(context.Context, *receiptsdomain.FamilyHintExample) error {
+	return nil
+}
+
+func (r *handlerReceiptRepo) ListFamilyHints(context.Context, string, []string, int) ([]receiptsdomain.FamilyHint, error) {
+	return []receiptsdomain.FamilyHint{}, nil
+}

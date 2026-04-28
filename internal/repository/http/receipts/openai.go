@@ -152,12 +152,18 @@ func (p *OpenAIParser) buildRequest(input receiptsdomain.ParseReceiptInput) ([]b
 		"If a field is unknown, use null for nullable fields and an empty array for warnings.",
 	}, "\n")
 
-	userPrompt := fmt.Sprintf(
-		"Parse this receipt image.\nAllowed categories:\n%s\nRequested date: %s\nRequested currency: %s\nKeep item names in the original receipt language.\nUse the category IDs exactly as listed.",
-		strings.Join(categoryLines, "\n"),
-		emptyAsUnknown(requestedDate),
-		emptyAsUnknown(requestedCurrency),
-	)
+	userPromptParts := []string{
+		fmt.Sprintf(
+			"Parse this receipt image.\nAllowed categories:\n%s\nRequested date: %s\nRequested currency: %s\nKeep item names in the original receipt language.\nUse the category IDs exactly as listed.",
+			strings.Join(categoryLines, "\n"),
+			emptyAsUnknown(requestedDate),
+			emptyAsUnknown(requestedCurrency),
+		),
+	}
+	if hintsBlock := buildCorrectionHintsBlock(input.Corrections); hintsBlock != "" {
+		userPromptParts = append(userPromptParts, hintsBlock)
+	}
+	userPrompt := strings.Join(userPromptParts, "\n\n")
 
 	payload := openAIRequest{
 		Model: p.model,
@@ -203,6 +209,33 @@ func (p *OpenAIParser) resolveURL(path string) (string, error) {
 		return "", err
 	}
 	return p.baseURL.ResolveReference(relative).String(), nil
+}
+
+func buildCorrectionHintsBlock(corrections []receiptsdomain.CorrectionHint) string {
+	if len(corrections) == 0 {
+		return ""
+	}
+
+	lines := []string{"Family-specific category hints:"}
+	for _, correction := range corrections {
+		name := strings.TrimSpace(correction.CanonicalName)
+		categoryName := strings.TrimSpace(correction.CategoryName)
+		if name == "" || categoryName == "" {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("- %q -> %q", name, categoryName))
+	}
+	if len(lines) == 1 {
+		return ""
+	}
+
+	lines = append(lines,
+		"",
+		"Use these as soft hints only.",
+		"Do not treat them as strict rules.",
+		"If the current receipt item is clearly different, ignore the hint.",
+	)
+	return strings.Join(lines, "\n")
 }
 
 type openAIRequest struct {

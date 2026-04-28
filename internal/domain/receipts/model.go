@@ -115,6 +115,67 @@ func (DraftExpense) TableName() string {
 	return "receipt_parse_draft_expenses"
 }
 
+type CategoryCorrectionEvent struct {
+	ID                       string     `gorm:"type:uuid;primaryKey"`
+	FamilyID                 string     `gorm:"type:uuid;index;not null"`
+	UserID                   string     `gorm:"type:uuid;not null"`
+	ReceiptParseJobID        string     `gorm:"type:uuid;not null"`
+	ReceiptParseItemID       string     `gorm:"type:uuid;not null"`
+	SourceItemText           string     `gorm:"not null"`
+	NormalizedItemText       string     `gorm:"not null"`
+	LLMCategoryID            *string    `gorm:"type:uuid"`
+	FinalCategoryID          string     `gorm:"type:uuid;not null"`
+	ProcessedAt              *time.Time `gorm:"type:timestamptz"`
+	MaterializeAttemptCount  int        `gorm:"not null"`
+	LastMaterializeAttemptAt *time.Time
+	NextMaterializeAttemptAt *time.Time
+	LockedAt                 *time.Time
+	LockedBy                 *string `gorm:"type:text"`
+	MaterializeErrorCode     *string `gorm:"type:text"`
+	MaterializeErrorMessage  *string `gorm:"type:text"`
+	CreatedAt                time.Time
+}
+
+func (CategoryCorrectionEvent) TableName() string {
+	return "receipt_parse_category_correction_events"
+}
+
+type FamilyHint struct {
+	ID              string    `gorm:"type:uuid;primaryKey"`
+	FamilyID        string    `gorm:"type:uuid;index;not null"`
+	CanonicalName   string    `gorm:"not null"`
+	FinalCategoryID string    `gorm:"type:uuid;not null"`
+	TimesConfirmed  int       `gorm:"not null"`
+	LastConfirmedAt time.Time `gorm:"not null"`
+	CreatedAt       time.Time `gorm:"autoCreateTime"`
+	UpdatedAt       time.Time `gorm:"autoUpdateTime"`
+}
+
+func (FamilyHint) TableName() string {
+	return "receipt_parse_family_hints"
+}
+
+type FamilyHintExample struct {
+	ID                 string    `gorm:"type:uuid;primaryKey"`
+	HintID             string    `gorm:"type:uuid;index;not null"`
+	CorrectionEventID  string    `gorm:"type:uuid;not null"`
+	SourceItemText     string    `gorm:"not null"`
+	NormalizedItemText string    `gorm:"not null"`
+	CreatedAt          time.Time `gorm:"autoCreateTime"`
+}
+
+func (FamilyHintExample) TableName() string {
+	return "receipt_parse_family_hint_examples"
+}
+
+type UpsertFamilyHintInput struct {
+	ID              string
+	FamilyID        string
+	CanonicalName   string
+	FinalCategoryID string
+	ConfirmedAt     time.Time
+}
+
 type JobWithDrafts struct {
 	Job
 	DraftExpenses []DraftExpense
@@ -124,6 +185,35 @@ type JobWithDrafts struct {
 type Category struct {
 	ID   string
 	Name string
+}
+
+type CorrectionHint struct {
+	CanonicalName  string
+	CategoryID     string
+	CategoryName   string
+	TimesConfirmed int
+}
+
+type NormalizeCategoryCorrectionInput struct {
+	Event            CategoryCorrectionEvent
+	FinalCategory    Category
+	LLMCategory      *Category
+	ExistingHints    []FamilyHint
+	ConfidenceCutoff float64
+}
+
+type NormalizeCategoryCorrectionAction string
+
+const (
+	NormalizeActionMatchExisting NormalizeCategoryCorrectionAction = "match_existing"
+	NormalizeActionCreateNew     NormalizeCategoryCorrectionAction = "create_new"
+)
+
+type NormalizeCategoryCorrectionResult struct {
+	Action        NormalizeCategoryCorrectionAction
+	HintID        *string
+	CanonicalName string
+	Confidence    float64
 }
 
 type UploadedFile struct {
@@ -174,10 +264,11 @@ type UpdateItemsInput struct {
 }
 
 type ParseReceiptInput struct {
-	File       UploadedFile
-	Categories []Category
-	Date       *time.Time
-	Currency   string
+	File        UploadedFile
+	Categories  []Category
+	Date        *time.Time
+	Currency    string
+	Corrections []CorrectionHint
 }
 
 type ParsedReceipt struct {

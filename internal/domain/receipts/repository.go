@@ -24,4 +24,12 @@ type Repository interface {
 	ListDraftExpenses(ctx context.Context, jobID string) ([]DraftExpense, error)
 	UpdateItem(ctx context.Context, item *Item) error
 	UpdateDraftExpense(ctx context.Context, draft *DraftExpense) error
+	CreateCategoryCorrectionEvent(ctx context.Context, event *CategoryCorrectionEvent) error
+	AcquireUnprocessedCategoryCorrectionEvent(ctx context.Context, workerID string, now time.Time) (*CategoryCorrectionEvent, error)
+	RequeueStaleCategoryCorrections(ctx context.Context, staleBefore time.Time) (int64, error)
+	MarkCategoryCorrectionEventProcessed(ctx context.Context, eventID string, processedAt time.Time) error
+	ReleaseCategoryCorrectionEventWithError(ctx context.Context, eventID, code, message string, nextAttemptAt *time.Time) error
+	UpsertFamilyHint(ctx context.Context, input UpsertFamilyHintInput) (*FamilyHint, error)
+	CreateFamilyHintExample(ctx context.Context, example *FamilyHintExample) error
+	ListFamilyHints(ctx context.Context, familyID string, categoryIDs []string, limit int) ([]FamilyHint, error)
 }

@@ -38,9 +38,9 @@ Implement the memory system in three persisted layers:
 2. Canonical family hints
 3. Hint examples
 
-Approve writes raw correction events and simple canonical hints inside the existing receipt approve transaction. It does not call an LLM and does not depend on any external API. This keeps expense creation transactional and predictable.
+Approve writes only raw correction events inside the existing receipt approve transaction. It does not create derived hints, does not call an LLM, and does not depend on any external API. This keeps expense creation transactional and predictable.
 
-Future LLM-driven normalization is represented as a separate materializer concern. It can read unprocessed correction events and merge similar examples into better canonical hints later. The model default for that materializer should be `gpt-5.4-nano`, configured separately from the image receipt parser model.
+Derived hints are created by a separate DB-backed materializer worker. The worker reads unprocessed correction events, asks a cheaper text model to match an existing family hint or propose a new canonical name, and writes the canonical hint/example tables. The default model is `gpt-5.4-nano`, configured separately from the image receipt parser model. If the model is unavailable, returns invalid output, or produces a low-confidence result, the worker falls back to deterministic canonicalization.
 
 ## Data Model
 
@@ -62,12 +62,20 @@ Columns:
 - `llm_category_id uuid null`
 - `final_category_id uuid not null references categories(id) on delete cascade`
 - `processed_at timestamptz null`
+- `materialize_attempt_count int not null default 0`
+- `last_materialize_attempt_at timestamptz null`
+- `next_materialize_attempt_at timestamptz null`
+- `locked_at timestamptz null`
+- `locked_by text null`
+- `materialize_error_code text null`
+- `materialize_error_message text null`
 - `created_at timestamptz not null default now()`
 
 Indexes:
 
 - `(family_id, created_at desc)`
 - `(processed_at) where processed_at is null`
+- `(processed_at, locked_at, next_materialize_attempt_at, created_at) where processed_at is null`
 - unique `(receipt_parse_item_id)` to avoid duplicate correction events for the same approved item
 
 Event creation rule:
@@ -163,6 +171,10 @@ type CorrectionHint struct {
 Extend `receipts.Repository` with methods that support the approved flow and prompt injection:
 
 - `CreateCategoryCorrectionEvent(ctx, event *CategoryCorrectionEvent) error`
+- `AcquireUnprocessedCategoryCorrectionEvent(ctx, workerID string, now time.Time) (*CategoryCorrectionEvent, error)`
+- `RequeueStaleCategoryCorrections(ctx, staleBefore time.Time) (int64, error)`
+- `MarkCategoryCorrectionEventProcessed(ctx, eventID string, processedAt time.Time) error`
+- `ReleaseCategoryCorrectionEventWithError(ctx, eventID, code, message string, nextAttemptAt *time.Time) error`
 - `UpsertFamilyHint(ctx, input UpsertFamilyHintInput) (*FamilyHint, error)`
 - `CreateFamilyHintExample(ctx, example *FamilyHintExample) error`
 - `ListFamilyHints(ctx, familyID string, categoryIDs []string, limit int) ([]FamilyHint, error)`
@@ -173,7 +185,7 @@ The exact input type names can follow existing Go style during implementation, b
 
 `ApproveParse` currently loads job, draft expenses, and items before opening the transaction. It then creates final expenses, updates drafts, and marks the job approved inside one transaction.
 
-The correction memory write should happen in that same transaction after final expense creation succeeds and before the job is marked approved.
+The raw correction event write should happen in that same transaction after final expense creation succeeds and before the job is marked approved.
 
 For each item:
 
@@ -181,12 +193,35 @@ For each item:
 2. Skip items without `FinalCategoryID`.
 3. Skip items where `LLMCategoryID` equals `FinalCategoryID`.
 4. Create a `CategoryCorrectionEvent`.
-5. Upsert a `FamilyHint` using the MVP canonical name.
-6. Create a `FamilyHintExample` linked to the event and hint.
 
 If there are no category corrections, approve behavior is unchanged.
 
 If correction persistence fails, approve should fail and roll back with the rest of the transaction because this is local database work inside the same business operation. The flow must not call an LLM.
+
+## Hint Materialization Flow
+
+The receipt service owns a second background loop next to the existing receipt parser worker:
+
+1. Recover stale locked correction events on startup.
+2. Acquire one unprocessed correction event using row locking and `SKIP LOCKED`.
+3. Load allowed category metadata for the event family.
+4. Load existing hints for the same family and final category.
+5. Ask the configured `HintNormalizer` for either a match to an existing hint or a new canonical name.
+6. Validate the result.
+7. In one DB transaction, upsert/increment the selected canonical hint, create a hint example, and mark the event processed.
+
+Retries:
+
+- Transient normalizer or DB errors release the event with error metadata and a future `next_materialize_attempt_at`.
+- After the configured max attempts, the worker uses deterministic fallback and marks the event processed if the local DB writes succeed.
+
+Fallback:
+
+- Use the event's `normalized_item_text` if present.
+- Otherwise use `source_item_text`.
+- Upsert by `(family_id, canonical_name, final_category_id)`.
+
+Low-confidence LLM output also falls back deterministically.
 
 ## Prompt Injection Flow
 
@@ -225,29 +260,45 @@ If the current receipt item is clearly different, ignore the hint.
 
 The prompt must include category names for model readability while the JSON schema continues to restrict output to allowed category IDs.
 
-## LLM Hint Materializer Direction
+## LLM Hint Normalizer
 
-The initial implementation does not need to run the LLM materializer.
+Add a domain interface:
 
-The future materializer should:
+```go
+type HintNormalizer interface {
+    NormalizeCategoryCorrection(ctx context.Context, input NormalizeCategoryCorrectionInput) (*NormalizeCategoryCorrectionResult, error)
+}
+```
 
-- Read unprocessed correction events.
-- Read existing family hints.
-- Ask a cheaper text model to match an event to an existing hint or propose a new canonical hint.
-- Use `gpt-5.4-nano` by default in a separate config from the receipt image parser model.
-- Use structured JSON output.
-- Mark events as processed only after successful local DB updates.
+The OpenAI implementation uses `gpt-5.4-nano` by default, calls the Responses API with structured JSON output, and returns:
 
-This materializer must remain asynchronous or best-effort. It must not be called synchronously from approve.
+- `action`: `match_existing` or `create_new`
+- `hint_id`: required only for `match_existing`
+- `canonical_name`: required for `create_new`
+- `confidence`: number from 0 to 1
+
+Validation rules:
+
+- A matched `hint_id` must be one of the existing hints sent in the request.
+- A matched hint must have the same final category.
+- A new canonical name must be non-empty after trimming.
+- Confidence below the configured threshold falls back to deterministic canonicalization.
+
+This normalizer is asynchronous from the user's perspective. It must not be called synchronously from approve.
 
 ## Testing Strategy
 
 Focused domain service tests:
 
-- Changed category on approve creates a correction event.
-- Uncategorized LLM item manually categorized creates a correction event.
+- Changed category on approve creates a raw correction event.
+- Uncategorized LLM item manually categorized creates a raw correction event.
 - Unchanged category does not create a correction event.
-- Repeated correction increments `times_confirmed`.
+- Approve does not directly create derived hints.
+- Materializer creates a new canonical hint from LLM output.
+- Materializer matches an existing hint and increments `times_confirmed`.
+- Low-confidence materializer output uses deterministic fallback.
+- Normalizer error retries without marking the event processed.
+- Repeated fallback correction increments `times_confirmed`.
 - Parser input receives top hints during job processing.
 - Hints are filtered by allowed categories.
 

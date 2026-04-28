@@ -23,13 +23,15 @@ type Config struct {
 }
 
 type ReceiptParserConfig struct {
-	FileStorageDir string
-	Enabled        bool
-	Provider       string
-	OpenAIAPIKey   string
-	OpenAIModel    string
-	OpenAIBaseURL  string
-	OpenAITimeout  time.Duration
+	FileStorageDir        string
+	Enabled               bool
+	Provider              string
+	OpenAIAPIKey          string
+	OpenAIModel           string
+	OpenAIBaseURL         string
+	OpenAITimeout         time.Duration
+	HintNormalizerEnabled bool
+	HintNormalizerModel   string
 }
 
 type MockDataSeedConfig struct {
@@ -119,13 +121,15 @@ func Load(log logger.Logger) (Config, error) {
 			Currency:         getEnv("MOCK_DATA_SEED_CURRENCY", "USD"),
 		},
 		ReceiptParser: ReceiptParserConfig{
-			FileStorageDir: getEnv("RECEIPT_FILE_STORAGE_DIR", "data/receipt-parses"),
-			Enabled:        getEnvBool("RECEIPT_PARSER_ENABLED", false),
-			Provider:       getEnv("RECEIPT_PARSER_PROVIDER", "mock"),
-			OpenAIAPIKey:   getEnv("OPENAI_API_KEY", ""),
-			OpenAIModel:    getEnv("OPENAI_MODEL", "gpt-4o-mini"),
-			OpenAIBaseURL:  getEnv("OPENAI_BASE_URL", "https://api.openai.com"),
-			OpenAITimeout:  getEnvDuration("OPENAI_TIMEOUT", 20*time.Second),
+			FileStorageDir:        getEnv("RECEIPT_FILE_STORAGE_DIR", "data/receipt-parses"),
+			Enabled:               getEnvBool("RECEIPT_PARSER_ENABLED", false),
+			Provider:              getEnv("RECEIPT_PARSER_PROVIDER", "mock"),
+			OpenAIAPIKey:          getEnv("OPENAI_API_KEY", ""),
+			OpenAIModel:           getEnv("OPENAI_MODEL", "gpt-4o-mini"),
+			OpenAIBaseURL:         getEnv("OPENAI_BASE_URL", "https://api.openai.com"),
+			OpenAITimeout:         getEnvDuration("OPENAI_TIMEOUT", 20*time.Second),
+			HintNormalizerEnabled: getEnvBool("RECEIPT_HINT_NORMALIZER_ENABLED", getEnvBool("RECEIPT_PARSER_ENABLED", false)),
+			HintNormalizerModel:   getEnv("RECEIPT_HINT_NORMALIZER_MODEL", "gpt-5.4-nano"),
 		},
 		DB: DBConfig{
 			DSN:             getEnv("DB_DSN", ""),

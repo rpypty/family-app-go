@@ -136,6 +136,84 @@ func TestOpenAIParserBuildRequestPreservesReceiptLanguageInstruction(t *testing.
 	}
 }
 
+func TestOpenAIParserBuildRequestIncludesFamilyCorrectionHints(t *testing.T) {
+	parser, err := NewOpenAIParser(OpenAIParserConfig{
+		APIKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new parser: %v", err)
+	}
+
+	raw, err := parser.buildRequest(receiptsdomain.ParseReceiptInput{
+		File: receiptsdomain.UploadedFile{
+			FileName:    "receipt.png",
+			ContentType: "image/png",
+			SizeBytes:   int64(len(testPNGBytes)),
+			Data:        testPNGBytes,
+		},
+		Categories: []receiptsdomain.Category{
+			{ID: "cat-products", Name: "Products"},
+			{ID: "cat-sport", Name: "Sport"},
+		},
+		Currency: "BYN",
+		Corrections: []receiptsdomain.CorrectionHint{
+			{CanonicalName: "Exponenta cocktail", CategoryID: "cat-sport", CategoryName: "Sport", TimesConfirmed: 2},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	var request openAIRequest
+	if err := json.Unmarshal(raw, &request); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	userText := request.Input[1].Content[0].Text
+	if !strings.Contains(userText, "Family-specific category hints:") {
+		t.Fatalf("missing hints block: %q", userText)
+	}
+	if !strings.Contains(userText, `"Exponenta cocktail" -> "Sport"`) {
+		t.Fatalf("missing hint mapping: %q", userText)
+	}
+	if !strings.Contains(userText, "Use these as soft hints only") {
+		t.Fatalf("missing soft hint instruction: %q", userText)
+	}
+}
+
+func TestOpenAIParserBuildRequestOmitsFamilyCorrectionHintsWhenEmpty(t *testing.T) {
+	parser, err := NewOpenAIParser(OpenAIParserConfig{
+		APIKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new parser: %v", err)
+	}
+
+	raw, err := parser.buildRequest(receiptsdomain.ParseReceiptInput{
+		File: receiptsdomain.UploadedFile{
+			FileName:    "receipt.png",
+			ContentType: "image/png",
+			SizeBytes:   int64(len(testPNGBytes)),
+			Data:        testPNGBytes,
+		},
+		Categories: []receiptsdomain.Category{
+			{ID: "cat-1", Name: "Products"},
+		},
+		Currency: "BYN",
+	})
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	var request openAIRequest
+	if err := json.Unmarshal(raw, &request); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	userText := request.Input[1].Content[0].Text
+	if strings.Contains(userText, "Family-specific category hints:") {
+		t.Fatalf("expected no hints block: %q", userText)
+	}
+}
+
 func TestOpenAIParserParseReceiptInvalidCategory(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -252,5 +330,107 @@ func TestOpenAIParserReturnsInvalidResponseOnRefusal(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "refused") {
 		t.Fatalf("expected refusal details, got %v", err)
+	}
+}
+
+func TestOpenAIHintNormalizerNormalizeCreateNewSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request["model"] != "gpt-5.4-nano" {
+			t.Fatalf("unexpected model %#v", request["model"])
+		}
+		raw, _ := json.Marshal(request)
+		body := string(raw)
+		if !strings.Contains(body, "Exponenta strawberry") {
+			t.Fatalf("expected event text in request: %s", body)
+		}
+		if !strings.Contains(body, "receipt_hint_normalization_result") {
+			t.Fatalf("expected structured output schema in request: %s", body)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"output":[
+				{
+					"type":"message",
+					"content":[
+						{
+							"type":"output_text",
+							"text":"{\"action\":\"create_new\",\"hint_id\":null,\"canonical_name\":\"Exponenta cocktail\",\"confidence\":0.91}"
+						}
+					]
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	normalizer, err := NewOpenAIHintNormalizer(OpenAIHintNormalizerConfig{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatalf("new normalizer: %v", err)
+	}
+
+	result, err := normalizer.NormalizeCategoryCorrection(context.Background(), receiptsdomain.NormalizeCategoryCorrectionInput{
+		Event: receiptsdomain.CategoryCorrectionEvent{
+			SourceItemText:     "Exponenta strawberry",
+			NormalizedItemText: "EXPONENTA 30g",
+			FinalCategoryID:    "cat-sport",
+		},
+		FinalCategory:    receiptsdomain.Category{ID: "cat-sport", Name: "Sport"},
+		ConfidenceCutoff: 0.7,
+	})
+	if err != nil {
+		t.Fatalf("normalize correction: %v", err)
+	}
+	if result.Action != receiptsdomain.NormalizeActionCreateNew || result.CanonicalName != "Exponenta cocktail" || result.Confidence != 0.91 {
+		t.Fatalf("unexpected normalizer result %+v", result)
+	}
+}
+
+func TestOpenAIHintNormalizerRejectsInvalidAction(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"output":[
+				{
+					"type":"message",
+					"content":[
+						{
+							"type":"output_text",
+							"text":"{\"action\":\"delete_all\",\"hint_id\":null,\"canonical_name\":\"Exponenta\",\"confidence\":0.8}"
+						}
+					]
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	normalizer, err := NewOpenAIHintNormalizer(OpenAIHintNormalizerConfig{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+	if err != nil {
+		t.Fatalf("new normalizer: %v", err)
+	}
+
+	_, err = normalizer.NormalizeCategoryCorrection(context.Background(), receiptsdomain.NormalizeCategoryCorrectionInput{
+		Event: receiptsdomain.CategoryCorrectionEvent{
+			SourceItemText:  "Exponenta",
+			FinalCategoryID: "cat-sport",
+		},
+		FinalCategory: receiptsdomain.Category{ID: "cat-sport", Name: "Sport"},
+	})
+	if !errors.Is(err, receiptsdomain.ErrLLMInvalidResponse) {
+		t.Fatalf("expected ErrLLMInvalidResponse, got %v", err)
 	}
 }
