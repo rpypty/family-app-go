@@ -1,0 +1,7 @@
+interface:
+  display_name: "family-app-go GitHub PR"
+  short_description: "Publish backend branches and open PRs"
+  default_prompt: "Use $family-app-go-github-pr to publish the current backend changes to GitHub and create a pull request."
+
+policy:
+  allow_implicit_invocation: true
