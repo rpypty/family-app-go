@@ -97,9 +97,14 @@ func New(log logger.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize receipt parser: %w", err)
 	}
+	receiptHintNormalizer, err := buildReceiptHintNormalizer(cfg.ReceiptParser, log)
+	if err != nil {
+		return nil, fmt.Errorf("initialize receipt hint normalizer: %w", err)
+	}
 	receiptService := receiptsdomain.NewServiceWithOptions(receiptRepo, receiptParser, expensesService, expensesService, receiptsdomain.ServiceOptions{
-		FileStore:     receiptsdomain.NewLocalFileStore(cfg.ReceiptParser.FileStorageDir),
-		WorkerEnabled: true,
+		FileStore:      receiptsdomain.NewLocalFileStore(cfg.ReceiptParser.FileStorageDir),
+		HintNormalizer: receiptHintNormalizer,
+		WorkerEnabled:  true,
 	})
 
 	var mockDataSeeder commonhandler.FamilySeeder

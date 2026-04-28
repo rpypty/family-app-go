@@ -15,15 +15,23 @@ import (
 )
 
 const (
-	defaultWakeQueueSize = 1
-	defaultPollInterval  = time.Second
-	defaultStaleAfter    = 15 * time.Minute
-	defaultWorkerID      = "receipt-parser"
-	defaultFileStoreRoot = "data/receipt-parses"
+	defaultWakeQueueSize                    = 1
+	defaultPollInterval                     = time.Second
+	defaultStaleAfter                       = 15 * time.Minute
+	defaultWorkerID                         = "receipt-parser"
+	defaultHintMaterializerWorkerID         = "receipt-hint-materializer"
+	defaultHintMaterializerMaxAttempts      = 3
+	defaultHintMaterializerRetryDelay       = time.Minute
+	defaultHintMaterializerConfidenceCutoff = 0.7
+	defaultFileStoreRoot                    = "data/receipt-parses"
 )
 
 type Parser interface {
 	ParseReceipt(ctx context.Context, input ParseReceiptInput) (*ParsedReceipt, error)
+}
+
+type HintNormalizer interface {
+	NormalizeCategoryCorrection(ctx context.Context, input NormalizeCategoryCorrectionInput) (*NormalizeCategoryCorrectionResult, error)
 }
 
 type CategoryProvider interface {
@@ -38,21 +46,26 @@ type ExpenseBatchCreator interface {
 type Service struct {
 	repo         Repository
 	parser       Parser
+	normalizer   HintNormalizer
 	categories   CategoryProvider
 	expenses     ExpenseBatchCreator
 	fileStore    FileStore
 	workerID     string
+	hintWorkerID string
 	pollInterval time.Duration
 	staleAfter   time.Duration
 	wake         chan struct{}
+	hintWake     chan struct{}
 }
 
 type ServiceOptions struct {
-	FileStore     FileStore
-	WorkerEnabled bool
-	WorkerID      string
-	PollInterval  time.Duration
-	StaleAfter    time.Duration
+	FileStore      FileStore
+	WorkerEnabled  bool
+	WorkerID       string
+	HintNormalizer HintNormalizer
+	HintWorkerID   string
+	PollInterval   time.Duration
+	StaleAfter     time.Duration
 }
 
 func NewService(repo Repository, parser Parser, categories CategoryProvider, expenses ExpenseBatchCreator) *Service {
@@ -71,6 +84,10 @@ func NewServiceWithOptions(repo Repository, parser Parser, categories CategoryPr
 	if workerID == "" {
 		workerID = defaultWorkerID
 	}
+	hintWorkerID := strings.TrimSpace(options.HintWorkerID)
+	if hintWorkerID == "" {
+		hintWorkerID = defaultHintMaterializerWorkerID
+	}
 	pollInterval := options.PollInterval
 	if pollInterval <= 0 {
 		pollInterval = defaultPollInterval
@@ -83,16 +100,20 @@ func NewServiceWithOptions(repo Repository, parser Parser, categories CategoryPr
 	service := &Service{
 		repo:         repo,
 		parser:       parser,
+		normalizer:   options.HintNormalizer,
 		categories:   categories,
 		expenses:     expenses,
 		fileStore:    fileStore,
 		workerID:     workerID,
+		hintWorkerID: hintWorkerID,
 		pollInterval: pollInterval,
 		staleAfter:   staleAfter,
 		wake:         make(chan struct{}, defaultWakeQueueSize),
+		hintWake:     make(chan struct{}, defaultWakeQueueSize),
 	}
 	if options.WorkerEnabled {
 		go service.runWorker()
+		go service.runHintMaterializer()
 	}
 	return service
 }
@@ -306,6 +327,9 @@ func (s *Service) ApproveParse(ctx context.Context, input ApproveInput) ([]expen
 		}
 
 		now := time.Now().UTC()
+		if err := s.persistCategoryCorrections(ctx, receiptTx, input.FamilyID, input.UserID, currentJob.ID, items, now); err != nil {
+			return err
+		}
 		currentJob.Status = StatusApproved
 		currentJob.ApprovedAt = &now
 		currentJob.UpdatedAt = now
@@ -315,6 +339,7 @@ func (s *Service) ApproveParse(ctx context.Context, input ApproveInput) ([]expen
 		return nil, err
 	}
 
+	s.wakeHintMaterializer()
 	s.cleanupStoredFiles(ctx, job.ID)
 
 	return created, nil
@@ -417,6 +442,21 @@ func (s *Service) runWorker() {
 	}
 }
 
+func (s *Service) runHintMaterializer() {
+	ctx := context.Background()
+	_ = s.RecoverStaleCategoryCorrections(ctx)
+	ticker := time.NewTicker(s.pollInterval)
+	defer ticker.Stop()
+
+	for {
+		_, _ = s.MaterializeNextCategoryCorrection(ctx)
+		select {
+		case <-s.hintWake:
+		case <-ticker.C:
+		}
+	}
+}
+
 func (s *Service) wakeWorker() {
 	select {
 	case s.wake <- struct{}{}:
@@ -424,8 +464,20 @@ func (s *Service) wakeWorker() {
 	}
 }
 
+func (s *Service) wakeHintMaterializer() {
+	select {
+	case s.hintWake <- struct{}{}:
+	default:
+	}
+}
+
 func (s *Service) RecoverStaleProcessing(ctx context.Context) error {
 	_, err := s.repo.RequeueStaleProcessing(ctx, time.Now().UTC().Add(-s.staleAfter))
+	return err
+}
+
+func (s *Service) RecoverStaleCategoryCorrections(ctx context.Context) error {
+	_, err := s.repo.RequeueStaleCategoryCorrections(ctx, time.Now().UTC().Add(-s.staleAfter))
 	return err
 }
 
@@ -441,6 +493,21 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+func (s *Service) MaterializeNextCategoryCorrection(ctx context.Context) (bool, error) {
+	now := time.Now().UTC()
+	event, err := s.repo.AcquireUnprocessedCategoryCorrectionEvent(ctx, s.hintWorkerID, now)
+	if err != nil {
+		return false, err
+	}
+	if event == nil {
+		return false, nil
+	}
+	if err := s.materializeCategoryCorrection(ctx, event, now); err != nil {
+		return true, nil
+	}
+	return true, nil
+}
+
 func (s *Service) processJob(ctx context.Context, job *Job) {
 	categories, err := s.categoriesForJob(ctx, job)
 	if err != nil {
@@ -452,6 +519,12 @@ func (s *Service) processJob(ctx context.Context, job *Job) {
 		return
 	}
 
+	corrections, err := s.correctionHintsForCategories(ctx, job.FamilyID, categories, 20)
+	if err != nil {
+		s.markFailed(ctx, job, "internal_error", "failed to load receipt parser hints")
+		return
+	}
+
 	file, err := s.loadJobFile(ctx, job.ID)
 	if err != nil {
 		s.markFailed(ctx, job, "receipt_file_unavailable", "receipt file is unavailable")
@@ -459,10 +532,11 @@ func (s *Service) processJob(ctx context.Context, job *Job) {
 	}
 
 	parsed, parseErr := s.parser.ParseReceipt(ctx, ParseReceiptInput{
-		File:       file,
-		Categories: categories,
-		Date:       job.RequestedDate,
-		Currency:   stringValue(job.RequestedCurrency),
+		File:        file,
+		Categories:  categories,
+		Date:        job.RequestedDate,
+		Currency:    stringValue(job.RequestedCurrency),
+		Corrections: corrections,
 	})
 	if parseErr != nil {
 		if errors.Is(parseErr, ErrLLMInvalidResponse) {
@@ -759,6 +833,235 @@ func buildDraftsFromItems(jobID string, items []Item, categoryNames map[string]s
 		drafts = append(drafts, *draft)
 	}
 	return drafts, nil
+}
+
+func (s *Service) persistCategoryCorrections(ctx context.Context, repo Repository, familyID, userID, jobID string, items []Item, now time.Time) error {
+	for _, item := range items {
+		if !shouldPersistCategoryCorrection(item) {
+			continue
+		}
+		normalized := canonicalItemText(item)
+		sourceText := strings.TrimSpace(item.RawName)
+		if normalized == "" || sourceText == "" {
+			continue
+		}
+
+		eventID, err := newUUID()
+		if err != nil {
+			return err
+		}
+
+		event := &CategoryCorrectionEvent{
+			ID:                 eventID,
+			FamilyID:           familyID,
+			UserID:             userID,
+			ReceiptParseJobID:  jobID,
+			ReceiptParseItemID: item.ID,
+			SourceItemText:     sourceText,
+			NormalizedItemText: normalized,
+			LLMCategoryID:      item.LLMCategoryID,
+			FinalCategoryID:    strings.TrimSpace(*item.FinalCategoryID),
+			CreatedAt:          now,
+		}
+		if err := repo.CreateCategoryCorrectionEvent(ctx, event); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func shouldPersistCategoryCorrection(item Item) bool {
+	if item.IsDeleted || item.FinalCategoryID == nil || strings.TrimSpace(*item.FinalCategoryID) == "" {
+		return false
+	}
+	if item.LLMCategoryID == nil || strings.TrimSpace(*item.LLMCategoryID) == "" {
+		return true
+	}
+	return strings.TrimSpace(*item.LLMCategoryID) != strings.TrimSpace(*item.FinalCategoryID)
+}
+
+func canonicalItemText(item Item) string {
+	if item.NormalizedName != nil {
+		if normalized := strings.TrimSpace(*item.NormalizedName); normalized != "" {
+			return normalized
+		}
+	}
+	return strings.TrimSpace(item.RawName)
+}
+
+func (s *Service) materializeCategoryCorrection(ctx context.Context, event *CategoryCorrectionEvent, now time.Time) error {
+	finalCategory, llmCategory, existingHints, err := s.materializerContext(ctx, event)
+	if err != nil {
+		return s.releaseMaterializerError(ctx, event, "context_unavailable", err.Error(), now)
+	}
+
+	canonicalName := deterministicCanonicalName(*event)
+	if s.normalizer != nil {
+		result, err := s.normalizer.NormalizeCategoryCorrection(ctx, NormalizeCategoryCorrectionInput{
+			Event:            *event,
+			FinalCategory:    finalCategory,
+			LLMCategory:      llmCategory,
+			ExistingHints:    existingHints,
+			ConfidenceCutoff: defaultHintMaterializerConfidenceCutoff,
+		})
+		if err != nil {
+			if event.MaterializeAttemptCount < defaultHintMaterializerMaxAttempts {
+				return s.releaseMaterializerError(ctx, event, "normalizer_failed", err.Error(), now)
+			}
+		} else if normalized, ok := validNormalizerCanonicalName(result, existingHints, defaultHintMaterializerConfidenceCutoff); ok {
+			canonicalName = normalized
+		}
+	}
+
+	return s.persistMaterializedHint(ctx, event, canonicalName, now)
+}
+
+func (s *Service) materializerContext(ctx context.Context, event *CategoryCorrectionEvent) (Category, *Category, []FamilyHint, error) {
+	var finalCategory Category
+	var llmCategory *Category
+
+	categories, err := s.categories.ListCategories(ctx, event.FamilyID)
+	if err != nil {
+		return Category{}, nil, nil, err
+	}
+	for _, category := range categories {
+		domainCategory := Category{ID: category.ID, Name: category.Name}
+		if category.ID == event.FinalCategoryID {
+			finalCategory = domainCategory
+		}
+		if event.LLMCategoryID != nil && category.ID == *event.LLMCategoryID {
+			copyCategory := domainCategory
+			llmCategory = &copyCategory
+		}
+	}
+	if strings.TrimSpace(finalCategory.ID) == "" {
+		finalCategory = Category{ID: event.FinalCategoryID, Name: event.FinalCategoryID}
+	}
+
+	existingHints, err := s.repo.ListFamilyHints(ctx, event.FamilyID, []string{event.FinalCategoryID}, 50)
+	if err != nil {
+		return Category{}, nil, nil, err
+	}
+	return finalCategory, llmCategory, existingHints, nil
+}
+
+func validNormalizerCanonicalName(result *NormalizeCategoryCorrectionResult, existingHints []FamilyHint, confidenceCutoff float64) (string, bool) {
+	if result == nil || result.Confidence < confidenceCutoff {
+		return "", false
+	}
+	switch result.Action {
+	case NormalizeActionMatchExisting:
+		if result.HintID == nil || strings.TrimSpace(*result.HintID) == "" {
+			return "", false
+		}
+		for _, hint := range existingHints {
+			if hint.ID == *result.HintID {
+				if canonicalName := strings.TrimSpace(hint.CanonicalName); canonicalName != "" {
+					return canonicalName, true
+				}
+			}
+		}
+		return "", false
+	case NormalizeActionCreateNew:
+		canonicalName := strings.TrimSpace(result.CanonicalName)
+		return canonicalName, canonicalName != ""
+	default:
+		return "", false
+	}
+}
+
+func (s *Service) persistMaterializedHint(ctx context.Context, event *CategoryCorrectionEvent, canonicalName string, now time.Time) error {
+	canonicalName = strings.TrimSpace(canonicalName)
+	if canonicalName == "" {
+		canonicalName = deterministicCanonicalName(*event)
+	}
+	hintID, err := newUUID()
+	if err != nil {
+		return err
+	}
+	exampleID, err := newUUID()
+	if err != nil {
+		return err
+	}
+
+	return s.repo.Transaction(ctx, func(tx Repository, _ expensesdomain.Repository) error {
+		hint, err := tx.UpsertFamilyHint(ctx, UpsertFamilyHintInput{
+			ID:              hintID,
+			FamilyID:        event.FamilyID,
+			CanonicalName:   canonicalName,
+			FinalCategoryID: event.FinalCategoryID,
+			ConfirmedAt:     now,
+		})
+		if err != nil {
+			return err
+		}
+		example := &FamilyHintExample{
+			ID:                 exampleID,
+			HintID:             hint.ID,
+			CorrectionEventID:  event.ID,
+			SourceItemText:     event.SourceItemText,
+			NormalizedItemText: event.NormalizedItemText,
+			CreatedAt:          now,
+		}
+		if err := tx.CreateFamilyHintExample(ctx, example); err != nil {
+			return err
+		}
+		return tx.MarkCategoryCorrectionEventProcessed(ctx, event.ID, now)
+	})
+}
+
+func (s *Service) releaseMaterializerError(ctx context.Context, event *CategoryCorrectionEvent, code, message string, now time.Time) error {
+	if event.MaterializeAttemptCount >= defaultHintMaterializerMaxAttempts {
+		return s.persistMaterializedHint(ctx, event, deterministicCanonicalName(*event), now)
+	}
+	nextAttemptAt := now.Add(defaultHintMaterializerRetryDelay)
+	return s.repo.ReleaseCategoryCorrectionEventWithError(ctx, event.ID, code, truncateErrorMessage(message), &nextAttemptAt)
+}
+
+func deterministicCanonicalName(event CategoryCorrectionEvent) string {
+	if normalized := strings.TrimSpace(event.NormalizedItemText); normalized != "" {
+		return normalized
+	}
+	return strings.TrimSpace(event.SourceItemText)
+}
+
+func truncateErrorMessage(message string) string {
+	message = strings.TrimSpace(message)
+	if len(message) <= 500 {
+		return message
+	}
+	return message[:500]
+}
+
+func (s *Service) correctionHintsForCategories(ctx context.Context, familyID string, categories []Category, limit int) ([]CorrectionHint, error) {
+	if len(categories) == 0 || limit <= 0 {
+		return []CorrectionHint{}, nil
+	}
+	categoryNames := make(map[string]string, len(categories))
+	categoryIDs := make([]string, 0, len(categories))
+	for _, category := range categories {
+		categoryIDs = append(categoryIDs, category.ID)
+		categoryNames[category.ID] = category.Name
+	}
+
+	hints, err := s.repo.ListFamilyHints(ctx, familyID, categoryIDs, limit)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]CorrectionHint, 0, len(hints))
+	for _, hint := range hints {
+		categoryName, ok := categoryNames[hint.FinalCategoryID]
+		if !ok {
+			continue
+		}
+		result = append(result, CorrectionHint{
+			CanonicalName:  hint.CanonicalName,
+			CategoryID:     hint.FinalCategoryID,
+			CategoryName:   categoryName,
+			TimesConfirmed: hint.TimesConfirmed,
+		})
+	}
+	return result, nil
 }
 
 func hasUnresolvedItems(items []Item) bool {
